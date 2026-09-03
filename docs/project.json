@@ -1,0 +1,8 @@
+{
+  "project_type": "web",
+  "sub_project_type": "",
+  "name": "NEXUS LAB AI",
+  "app_slug": "nexus-lab-ai",
+  "version_description": "Add Android APK cloud build pipeline",
+  "preview_type": "mobile"
+}

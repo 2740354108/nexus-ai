@@ -1,0 +1,42 @@
+[
+  {
+    "pageKey": "Home",
+    "title": "Home Page",
+    "url": "/"
+  },
+  {
+    "pageKey": "AI",
+    "title": "NEXUS AI",
+    "url": "/ai"
+  },
+  {
+    "pageKey": "App",
+    "title": "NEXUS 应用",
+    "url": "/app"
+  },
+  {
+    "pageKey": "Auth",
+    "title": "登录中",
+    "url": "/auth/callback"
+  },
+  {
+    "pageKey": "Help",
+    "title": "帮助中心",
+    "url": "/help"
+  },
+  {
+    "pageKey": "Privacy",
+    "title": "隐私政策",
+    "url": "/privacy"
+  },
+  {
+    "pageKey": "Space",
+    "title": "我的空间",
+    "url": "/space"
+  },
+  {
+    "pageKey": "Terms",
+    "title": "服务条款",
+    "url": "/terms"
+  }
+]
