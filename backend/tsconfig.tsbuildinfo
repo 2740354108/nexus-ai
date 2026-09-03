@@ -1,0 +1,1 @@
+{"root":["./src/app.ts","./src/index.ts","./src/__tests__/setup.ts","./src/config/env.ts","./src/config/logger.ts","./src/middleware/errorHandler.ts","./src/middleware/logger.ts","./src/middleware/validation.ts","./src/modules/ai.ts","./src/modules/music.ts","./src/modules/system.ts","./src/modules/video.ts"],"version":"5.9.3"}

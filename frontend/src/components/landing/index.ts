@@ -1,0 +1,13 @@
+export { default as Navbar } from "./Navbar";
+export { default as Hero } from "./Hero";
+export { default as AIEntryBanner } from "./AIEntryBanner";
+export { default as LogoMarquee } from "./LogoMarquee";
+export { default as Features } from "./Features";
+export { default as Work } from "./Work";
+export { default as Stats } from "./Stats";
+export { default as MusicStudio } from "./MusicStudio";
+export { default as VideoStudio } from "./VideoStudio";
+export { default as AIStudio } from "./AIStudio";
+export { default as Testimonials } from "./Testimonials";
+export { default as CTA } from "./CTA";
+export { default as Footer } from "./Footer";
