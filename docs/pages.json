@@ -15,6 +15,11 @@
     "url": "/app"
   },
   {
+    "pageKey": "Settings",
+    "title": "密钥设置",
+    "url": "/app/settings"
+  },
+  {
     "pageKey": "Auth",
     "title": "登录中",
     "url": "/auth/callback"

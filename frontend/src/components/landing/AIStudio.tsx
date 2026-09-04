@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { AiBadge } from "../AiBadge";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -12,14 +12,19 @@ import {
   Loader2,
   User,
   Layers,
+  ImagePlus,
+  X,
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
-import { streamOpenRouter } from "@/lib/providers/openrouter";
+import { streamOpenRouter, type ChatApiMessage } from "@/lib/providers/openrouter";
+import { compressImageFile } from "@/lib/utils/image";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  /** 随消息发送的图片（data URL），用于展示；发送时仅最后一条携带 */
+  image?: string;
 };
 
 const LANGS = ["TypeScript", "React", "Python", "Java", "Go", "SQL", "HTML/CSS"];
@@ -194,6 +199,10 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const [configured, setConfigured] = useState<boolean | null>(null);
   // 自带密钥设置（原生环境下用用户自己的密钥直连官方接口）
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  // 图片上传（拍照 / 相册）
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 对话状态
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -233,7 +242,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   /** 流式调用 AI：消费 SSE，逐字回调 token */
   const streamAI = (
     mode: "chat" | "code",
-    msgs: ChatMessage[],
+    msgs: ChatApiMessage[],
     handlers: {
       onToken: (t: string) => void;
       onModel?: (m: string) => void;
@@ -321,17 +330,37 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
 
   const sendChat = async (override?: string) => {
     const text = (override ?? chatInput).trim();
-    if (!text || sending) return;
+    if ((!text && !pendingImage) || sending) return;
     setChatError("");
     setSending(true);
     setChatInput("");
 
-    const next: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const finalText = text || "请分析这张图片";
+    const next: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: finalText, image: pendingImage ?? undefined },
+    ];
     // 先放一条空的助手消息占位，随后逐字填充
     setMessages([...next, { role: "assistant", content: "" }]);
     const assistantIndex = next.length;
 
-    await streamAI("chat", next.slice(-12), {
+    // 组装 API 消息：仅最后一条用户消息携带图片，历史消息只发文本（控制体积）
+    const history = next.slice(-12);
+    const apiMsgs: ChatApiMessage[] = history.map((m, i) => {
+      const isLast = i === history.length - 1;
+      if (m.image && m.role === "user" && isLast) {
+        return {
+          role: m.role,
+          content: [
+            { type: "text", text: m.content },
+            { type: "image_url", image_url: { url: m.image! } },
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+
+    await streamAI("chat", apiMsgs, {
       onToken: (t) => {
         setMessages((prev) => {
           const copy = [...prev];
@@ -340,9 +369,31 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
           return copy;
         });
       },
-      onError: (e) => setChatError(e),
+      onError: (e) => {
+        const hint = /image|图片|modalit|multimodal|不支持/i.test(e)
+          ? "。提示：当前模型可能不支持看图，去「我的 → 密钥设置」换一个标了「可看图」的模型。"
+          : "";
+        setChatError(e + hint);
+      },
     });
     setSending(false);
+    setPendingImage(null);
+  };
+
+  const handlePickImage = () => fileInputRef.current?.click();
+
+  const handleImageChosen = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 允许重复选择同一张
+    if (!file) return;
+    setImageBusy(true);
+    try {
+      setPendingImage(await compressImageFile(file));
+    } catch {
+      setChatError("图片处理失败，请换一张试试");
+    } finally {
+      setImageBusy(false);
+    }
   };
 
   const generateCode = async () => {
@@ -526,7 +577,16 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                             </span>
                           )
                         ) : (
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                          <>
+                            {msg.image && (
+                              <img
+                                src={msg.image}
+                                alt="发送的图片"
+                                className="mb-2 max-h-44 w-auto rounded-xl border border-white/20"
+                              />
+                            )}
+                            <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                          </>
                         )}
                       </div>
                     </div>
@@ -542,7 +602,47 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                 )}
 
                 {/* 输入区 */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageChosen}
+                />
+                {pendingImage && (
+                  <div className="mb-2 flex items-center gap-2.5">
+                    <div className="relative">
+                      <img
+                        src={pendingImage}
+                        alt="待发送图片"
+                        className="h-16 w-16 rounded-lg border border-white/20 object-cover"
+                      />
+                      <button
+                        onClick={() => setPendingImage(null)}
+                        aria-label="移除图片"
+                        className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      图片将随消息一起发送给模型分析
+                    </span>
+                  </div>
+                )}
                 <div className="mt-4 flex items-end gap-3">
+                  <button
+                    onClick={handlePickImage}
+                    disabled={sending || imageBusy}
+                    title="添加图片"
+                    className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-muted-foreground transition-colors hover:border-cyan-400/40 hover:text-cyan-300 disabled:opacity-50"
+                  >
+                    {imageBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-4 w-4" />
+                    )}
+                  </button>
                   <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
@@ -559,7 +659,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                   />
                   <button
                     onClick={() => sendChat()}
-                    disabled={sending || !chatInput.trim()}
+                    disabled={sending || (!chatInput.trim() && !pendingImage)}
                     className="group inline-flex h-[52px] items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-violet-500 px-6 text-sm font-semibold text-white transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 btn-neon"
                   >
                     {sending ? (

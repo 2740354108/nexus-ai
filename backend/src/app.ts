@@ -36,7 +36,8 @@ export const createApp = (): Application => {
   )
 
   // Body parsing and compression
-  app.use(express.json())
+  // limit 12mb：聊天支持携带压缩后的图片（base64）
+  app.use(express.json({ limit: '12mb' }))
   app.use(express.urlencoded({ extended: true }))
   app.use(compression())
 

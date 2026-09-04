@@ -23,9 +23,37 @@ const CODE_SYSTEM_PROMPT = `你是一位资深全栈工程师，擅长 TypeScrip
 - 只输出必要内容：需求模糊时先给出最合理的实现
 - 如需补充说明，说明放在代码块之外，保持简短`
 
+/** 多模态消息片段：文本或图片（base64 data URL） */
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 interface ChatMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[]
+}
+
+/** 单张图片数据上限（≈4.5MB 的 base64） */
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000
+
+/** 校验数组型内容：只保留文本与合法图片片段 */
+function sanitizeContentParts(raw: unknown): ContentPart[] {
+  if (!Array.isArray(raw)) return []
+  const parts: ContentPart[] = []
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue
+    if (p.type === 'text' && typeof (p as any).text === 'string' && (p as any).text.trim()) {
+      parts.push({ type: 'text', text: String((p as any).text).slice(0, 4000) })
+    } else if (
+      p.type === 'image_url' &&
+      typeof (p as any)?.image_url?.url === 'string' &&
+      (p as any).image_url.url.startsWith('data:image/') &&
+      (p as any).image_url.url.length <= MAX_IMAGE_DATA_URL_LENGTH
+    ) {
+      parts.push({ type: 'image_url', image_url: { url: String((p as any).image_url.url) } })
+    }
+  }
+  return parts
 }
 
 /** 模型候选链：前一个被限流/出错时自动切换下一个 */
@@ -38,20 +66,47 @@ function getModelChain(): string[] {
   return [primary, ...rest.filter((m) => m !== primary)]
 }
 
-/** 校验并裁剪消息列表 */
+/** 校验并裁剪消息列表（支持图片：仅最后一条用户消息允许携带图片） */
 function sanitizeMessages(raw: unknown): ChatMessage[] {
   if (!Array.isArray(raw)) return []
-  return raw
+  const cleaned = raw
     .filter(
       (m): m is ChatMessage =>
         m &&
         typeof m === 'object' &&
         (m.role === 'user' || m.role === 'assistant') &&
-        typeof m.content === 'string' &&
-        m.content.trim().length > 0
+        (typeof m.content === 'string' || Array.isArray(m.content))
     )
     .slice(-12) // 最多带 12 条上下文
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }))
+
+  // 定位最后一条用户消息：只有它保留图片，历史消息一律降级为纯文本
+  let lastUserIdx = -1
+  for (let i = cleaned.length - 1; i >= 0; i--) {
+    if (cleaned[i].role === 'user') {
+      lastUserIdx = i
+      break
+    }
+  }
+
+  const out: ChatMessage[] = []
+  cleaned.forEach((m, i) => {
+    if (typeof m.content === 'string') {
+      const text = m.content.trim()
+      if (text) out.push({ role: m.role, content: text.slice(0, 4000) })
+      return
+    }
+
+    const parts = sanitizeContentParts(m.content)
+    const hasImage = parts.some((p) => p.type === 'image_url')
+    if (hasImage && i !== lastUserIdx) {
+      const textOnly = parts.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      if (textOnly.length) out.push({ role: m.role, content: textOnly })
+      return
+    }
+    if (parts.length) out.push({ role: m.role, content: parts })
+  })
+
+  return out
 }
 
 /**

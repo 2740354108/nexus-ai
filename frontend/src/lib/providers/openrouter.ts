@@ -6,6 +6,41 @@ export type StreamHandlers = {
   onError: (e: string) => void;
 };
 
+/** 多模态消息片段：文本或图片（base64 data URL） */
+export type ChatPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export type ChatApiMessage = {
+  role: string;
+  content: string | ChatPart[];
+};
+
+/**
+ * 拉取 OpenRouter 上「支持看图且免费」的模型列表（该接口无需鉴权）。
+ * 以平台返回的实时数据为准，避免手写模型 ID 过期失效。
+ */
+export async function fetchFreeVisionModels(): Promise<{ id: string; name: string }[]> {
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/models");
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const list = Array.isArray(data?.data) ? data.data : [];
+    return list
+      .filter(
+        (m: any) =>
+          Array.isArray(m?.architecture?.input_modalities) &&
+          m.architecture.input_modalities.includes("image") &&
+          (String(m?.id || "").endsWith(":free") ||
+            (Number(m?.pricing?.prompt) === 0 && Number(m?.pricing?.completion) === 0)),
+      )
+      .map((m: any) => ({ id: String(m.id), name: String(m.name || m.id) }))
+      .slice(0, 24);
+  } catch {
+    return [];
+  }
+}
+
 const CODE_SYSTEM_PROMPT =
   "你是一名资深软件工程师。用户会给出需求，请直接输出可用的代码，用 markdown 代码块包裹，代码之外只保留极简说明，不要啰嗦。";
 
@@ -17,7 +52,7 @@ export async function streamOpenRouter(opts: {
   apiKey: string;
   model: string;
   mode: "chat" | "code";
-  messages: { role: string; content: string }[];
+  messages: ChatApiMessage[];
   handlers: StreamHandlers;
 }): Promise<void> {
   const { apiKey, model, mode, messages, handlers } = opts;

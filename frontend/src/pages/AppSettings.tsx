@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Save, Trash2, ShieldCheck, ChevronDown } from "lucide-react";
 import { CHAT_MODELS, useSettings } from "@/lib/settings";
 import { isNativeApp } from "@/lib/settings";
+import { fetchFreeVisionModels } from "@/lib/providers/openrouter";
 
 /**
  * 密钥设置页：让用户填入自己的 API 密钥。
@@ -14,10 +15,20 @@ const AppSettings = () => {
   const [showToken, setShowToken] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [saved, setSaved] = useState(false);
+  // 支持看图的免费模型（从 OpenRouter 实时获取）
+  const [visionModels, setVisionModels] = useState<{ id: string; name: string }[]>([]);
+  const [loadingVision, setLoadingVision] = useState(true);
 
   useEffect(() => {
     if (ready) setDraft(settings);
   }, [ready, settings]);
+
+  useEffect(() => {
+    fetchFreeVisionModels()
+      .then(setVisionModels)
+      .catch(() => setVisionModels([]))
+      .finally(() => setLoadingVision(false));
+  }, []);
 
   const handleSave = () => {
     update(draft);
@@ -128,6 +139,45 @@ const AppSettings = () => {
               </div>
             )}
           </div>
+        </section>
+
+        {/* 支持看图的免费模型（实时拉取，用于图片分析） */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-white">
+            支持看图的免费模型
+            <span className="text-[10px] font-normal text-white/40">（实时获取 · 图片分析用）</span>
+          </label>
+          {loadingVision ? (
+            <p className="mt-2 text-[11px] text-muted-foreground">正在获取模型列表…</p>
+          ) : visionModels.length === 0 ? (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              暂时获取不到列表，请检查网络后重新进入本页
+            </p>
+          ) : (
+            <div className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-0.5">
+              {visionModels.map((m) => {
+                const active = m.id === draft.chatModel;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, chatModel: m.id }))}
+                    className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[11px] transition-colors ${
+                      active
+                        ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+                        : "border-white/10 bg-black/30 text-white/75 hover:border-white/20"
+                    }`}
+                  >
+                    <span className="truncate">{m.name}</span>
+                    <span className="ml-2 shrink-0 text-[10px] text-white/35">免费 · 可看图</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            免费模型有速率限制，版权授权以模型页面说明为准；分析图片消耗比纯文字大。
+          </p>
         </section>
 
         {/* Pollinations 令牌（可选） */}
