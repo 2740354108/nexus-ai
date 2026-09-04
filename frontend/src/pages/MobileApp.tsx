@@ -9,8 +9,11 @@ import {
   Music4,
   Zap,
   LogOut,
+  KeyRound,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import { useSettings } from "@/lib/settings";
 import AIStudio from "@/components/landing/AIStudio";
 import MusicStudio from "@/components/landing/MusicStudio";
 import VideoStudio from "@/components/landing/VideoStudio";
@@ -40,6 +43,7 @@ const NAV: { key: MainTab; label: string; icon: typeof MessageSquare }[] = [
  */
 const MobileApp = () => {
   const { user, signOut } = useAuth();
+  const { settings } = useSettings();
   const [tab, setTab] = useState<MainTab>("chat");
   const [createTab, setCreateTab] = useState<CreateTab>("image");
 
@@ -102,21 +106,33 @@ const MobileApp = () => {
         )}
 
         {tab === "me" && (
-          <div className="px-4 py-2">
+          <div className="space-y-3 px-4 py-3">
+            {/* 密钥设置：自带密钥模式下的核心入口，始终可见 */}
+            <Link
+              to="/app/settings"
+              className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 transition-colors hover:border-cyan-500/40"
+            >
+              <span className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400/20 to-violet-500/20">
+                  <KeyRound className="h-4 w-4 text-cyan-300" />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-white">密钥设置</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {settings.openrouterKey ? "已配置 · AI 对话就绪" : "未配置 · 填密钥后可用"}
+                  </span>
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-white/30" />
+            </Link>
+
             {user ? (
               <SpacePage />
             ) : (
-              <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
-                  <User className="h-7 w-7 text-muted-foreground" />
-                </span>
-                <p className="text-sm text-muted-foreground">登录后可查看你的 AI 作品</p>
-                <Link
-                  to="/"
-                  className="btn-neon inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 px-6 py-2.5 text-sm font-semibold text-white"
-                >
-                  去登录
-                </Link>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  应用为离线独立模式，AI 功能使用你自己的密钥，无需登录即可使用。
+                </p>
               </div>
             )}
           </div>

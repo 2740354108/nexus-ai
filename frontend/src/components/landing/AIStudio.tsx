@@ -14,6 +14,8 @@ import {
   Layers,
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
+import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
+import { streamOpenRouter } from "@/lib/providers/openrouter";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -190,6 +192,8 @@ const MarkdownView = ({ content }: { content: string }) => {
 const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boolean; defaultMode?: "chat" | "code" }) => {
   const [tab, setTab] = useState<"chat" | "code">(defaultMode);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  // 自带密钥设置（原生环境下用用户自己的密钥直连官方接口）
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   // 对话状态
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -208,6 +212,14 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // 原生应用：是否已填入自己的密钥；网页端：询问后端是否配置
+    if (isNativeApp()) {
+      loadSettings().then((s) => {
+        setAppSettings(s);
+        setConfigured(!!s.openrouterKey);
+      });
+      return;
+    }
     fetch("/api/ai/status")
       .then((r) => r.json())
       .then((d) => setConfigured(!!d.configured))
@@ -233,6 +245,19 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     const onError = handlers.onError;
 
     return (async () => {
+      // 原生应用：用用户自己的密钥直连 OpenRouter，不经过任何中间服务器
+      if (isNativeApp()) {
+        const s = appSettings ?? (await loadSettings());
+        await streamOpenRouter({
+          apiKey: s.openrouterKey,
+          model: s.chatModel,
+          mode,
+          messages: msgs,
+          handlers: { onToken, onModel, onError },
+        });
+        return;
+      }
+
       let resp: globalThis.Response;
       try {
         resp = await fetch("/api/ai/chat/stream", {

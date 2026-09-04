@@ -1,16 +1,18 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// NEXUS AI — Android 应用配置
-// 说明：server.url 指向线上「移动端应用」，保证 App 内容与网站 /app 完全一致。
-// ⚠️ 上架前请把它换成你的正式部署地址（沙盒链接会随沙盒关闭而失效）。
+// NEXUS AI — Android 应用配置（离线独立应用）
+// 说明：不再配置 server.url，页面资源随构建打包进安装包（android/app/src/main/assets/public）。
+// 因此应用启动即加载本地内容：不依赖任何线上地址，断网也能打开。
 const config: CapacitorConfig = {
   appId: 'com.nexuslab.ai',
   appName: 'NEXUS AI',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    // 线上移动端应用入口（含聊天 / 创作 / 我的）
-    url: 'https://af0c248dcf9096818.app.workbuddy.link/app',
+  },
+  android: {
+    // 允许混合内容：部分自建服务（如局域网 ComfyUI）走 http
+    allowMixedContent: true,
   },
 };
 

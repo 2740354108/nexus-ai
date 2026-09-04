@@ -4,6 +4,8 @@ import { useAuth } from "@/lib/AuthContext";
 import { saveHistory } from "@/lib/database";
 import { AiBadge } from "../AiBadge";
 import { toast } from "sonner";
+import { isNativeApp, loadSettings } from "@/lib/settings";
+import { buildPollinationsUrl } from "@/lib/providers/pollinations";
 import {
   Download,
   Trash2,
@@ -119,28 +121,42 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
       const suffix = STYLE_PRESETS[activeStyle]?.suffix || "";
       const stylePrompt = suffix ? `${finalPrompt}, ${suffix}` : finalPrompt;
 
-      const resp = await fetch("/api/image/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let imageUrl: string;
+
+      if (isNativeApp()) {
+        // 原生应用：直连 Pollinations 出图，不经过任何中间服务器
+        const s = await loadSettings();
+        imageUrl = buildPollinationsUrl({
           prompt: stylePrompt,
-          style: activeStyle,
           width: activeRes.w,
           height: activeRes.h,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success || !data.imageUrl) {
-        throw new Error(data.error || "图片生成失败");
+          token: s.pollinationsToken || undefined,
+        });
+      } else {
+        const resp = await fetch("/api/image/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: stylePrompt,
+            style: activeStyle,
+            width: activeRes.w,
+            height: activeRes.h,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success || !data.imageUrl) {
+          throw new Error(data.error || "图片生成失败");
+        }
+        imageUrl = data.imageUrl;
       }
 
       const item: ImageItem = {
         id: `img-${Date.now()}`,
         prompt: finalPrompt,
         style: activeStyle,
-        imageUrl: data.imageUrl,
-        width: data.width,
-        height: data.height,
+        imageUrl,
+        width: activeRes.w,
+        height: activeRes.h,
         createdAt: Date.now(),
       };
       setImages((prev) => [item, ...prev]);

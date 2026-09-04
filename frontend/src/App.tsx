@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Route } from 'react-router-dom';
+import { BrowserRouter, Route, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AnimatedRoutes } from "@/components/AnimatedRoutes";
@@ -11,6 +12,7 @@ import TermsOfService from "./pages/TermsOfService";
 import HelpCenter from "./pages/HelpCenter";
 import SpacePage from "./pages/SpacePage";
 import MobileApp from "./pages/MobileApp";
+import AppSettings from "./pages/AppSettings";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "@/lib/AuthContext";
@@ -39,6 +41,17 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * 原生应用启动后直接进入手机端界面（而不是电脑版首页）；
+ * 网页端行为保持不变。
+ */
+const NativeEntry = () => {
+  if (Capacitor.isNativePlatform() && window.location.pathname === "/") {
+    return <Navigate to="/app" replace />;
+  }
+  return <Index />;
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -47,7 +60,7 @@ function App() {
         <BrowserRouter>
           <AuthProvider>
             <AnimatedRoutes>
-              <Route path="/" data-genie-title="Home Page" data-genie-key="Home" element={<PageTransition transition="slide-up"><Index /></PageTransition>} />
+              <Route path="/" data-genie-title="Home Page" data-genie-key="Home" element={<PageTransition transition="slide-up"><NativeEntry /></PageTransition>} />
               {/* 独立 AI 体验页 */}
               <Route path="/ai" data-genie-title="NEXUS AI" data-genie-key="AI" element={<PageTransition transition="slide-up"><AIPage /></PageTransition>} />
               {/* 手机端应用外壳（底部 Tab 导航） */}
@@ -61,6 +74,8 @@ function App() {
               <Route path="/space" data-genie-title="我的空间" data-genie-key="Space" element={<PageTransition transition="fade"><SpacePage /></PageTransition>} />
               {/* TCB 登录回调（OAuth 用，邮箱登录不走这里） */}
               <Route path="/auth/callback" data-genie-title="登录中" data-genie-key="Auth" element={<AuthCallback />} />
+              {/* 应用内密钥设置（自带密钥模式） */}
+              <Route path="/app/settings" data-genie-title="密钥设置" data-genie-key="Settings" element={<PageTransition transition="fade"><AppSettings /></PageTransition>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" data-genie-key="NotFound" data-genie-title="Not Found" element={<PageTransition transition="fade"><NotFound /></PageTransition>} />
             </AnimatedRoutes>
