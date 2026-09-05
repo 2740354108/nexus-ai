@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI 移动应用",
   "app_slug": "nexus-ai",
-  "version_description": "改造为离线独立应用并支持自带密钥",
+  "version_description": "聊天新增上传图片分析功能",
   "preview_type": "mobile"
 }

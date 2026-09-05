@@ -14,11 +14,13 @@ import {
   Layers,
   ImagePlus,
   X,
+  Trash2,
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import { streamOpenRouter, type ChatApiMessage } from "@/lib/providers/openrouter";
 import { compressImageFile } from "@/lib/utils/image";
+import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -203,6 +205,8 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 本地对话记录：加载完成后才开始自动保存
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   // 对话状态
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -238,6 +242,21 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, sending]);
+
+  // 启动时恢复本机保存的对话记录
+  useEffect(() => {
+    loadChatHistory().then((h) => {
+      if (h.length) setMessages(h);
+      setHistoryLoaded(true);
+    });
+  }, []);
+
+  // 对话变化时写入本机（防抖；流式输出过程中不写，结束再落盘）
+  useEffect(() => {
+    if (!historyLoaded || sending) return;
+    const id = setTimeout(() => void saveChatHistory(messages), 400);
+    return () => clearTimeout(id);
+  }, [messages, sending, historyLoaded]);
 
   /** 流式调用 AI：消费 SSE，逐字回调 token */
   const streamAI = (
@@ -396,6 +415,11 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     }
   };
 
+  const handleClearHistory = async () => {
+    setMessages([]);
+    await clearChatHistory();
+  };
+
   const generateCode = async () => {
     if (!codeInput.trim() || coding) return;
     setCodeError("");
@@ -508,6 +532,24 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                 transition={{ duration: 0.25 }}
                 className={embedded ? "" : "mt-6"}
               >
+                {/* 对话记录工具条 */}
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground">
+                    {messages.length > 0
+                      ? `本机已保存 ${Math.ceil(messages.length / 2)} 轮对话`
+                      : "对话记录仅保存在这台设备上"}
+                  </span>
+                  {messages.length > 0 && (
+                    <button
+                      onClick={handleClearHistory}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-red-300"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      清空记录
+                    </button>
+                  )}
+                </div>
+
                 {/* 消息列表 */}
                 <div className="flex h-[380px] flex-col gap-4 overflow-y-auto rounded-2xl border border-white/5 bg-black/30 p-4 sm:p-5">
                   {messages.length === 0 && !sending && (
