@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { AiBadge } from "../AiBadge";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -8,7 +9,10 @@ import {
   Wand2,
   X,
   Link2,
+  Server,
 } from "lucide-react";
+import { isNativeApp, loadSettings } from "@/lib/settings";
+import { comfyHealth, generateComfyVideo } from "@/lib/providers/comfyClient";
 
 type VideoItem = {
   id: string;
@@ -68,6 +72,10 @@ const VideoStudio = ({ embedded = false }: { embedded?: boolean }) => {
   const [mode, setMode] = useState<"i2v" | "t2v">("i2v");
   const fileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const navigate = useNavigate();
+  // 原生模式：直接用用户自己的 ComfyUI，状态在这里显示
+  const [comfyOk, setComfyOk] = useState<boolean | null>(null);
+  const [comfyUnet, setComfyUnet] = useState("");
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -150,6 +158,19 @@ const VideoStudio = ({ embedded = false }: { embedded?: boolean }) => {
 
   // 组件卸载时停止轮询，避免内存泄漏
   useEffect(() => {
+    if (isNativeApp()) {
+      // 原生应用：检测用户自己的 ComfyUI 是否已配好
+      loadSettings().then(async (s) => {
+        setComfyUnet(s.comfyUnet);
+        if (s.comfyUrl) {
+          const res = await comfyHealth(s.comfyUrl);
+          setComfyOk(res.ok);
+        } else {
+          setComfyOk(false);
+        }
+      });
+      return () => stopPolling();
+    }
     checkTunnel();
     // 若上次有未完成的生成任务，自动恢复轮询（切换标签或刷新页面后）
     const saved = loadJSON<InFlight | null>(INFLOW_KEY, null);
@@ -226,6 +247,45 @@ const VideoStudio = ({ embedded = false }: { embedded?: boolean }) => {
     setErrorMsg("");
     setStage(mode === "i2v" ? "上传图片到生成引擎..." : "正在生成视频，通常需要 1.5-4 分钟，请耐心等待...");
     stopPolling();
+
+    // 原生应用：直接提交到自己电脑上的 ComfyUI
+    if (isNativeApp()) {
+      try {
+        const s = await loadSettings();
+        if (!s.comfyUrl || !s.comfyUnet) {
+          setErrorMsg("请先在「我的 → AI 接口设置」里连接你的 ComfyUI 并选择视频模型");
+          setGenerating(false);
+          setStage("");
+          return;
+        }
+        const videoUrl = await generateComfyVideo({
+          base: s.comfyUrl,
+          unet: s.comfyUnet,
+          vae: s.comfyVae || undefined,
+          clipVision: s.comfyClipVision || undefined,
+          mode,
+          imageFile: image,
+          prompt: prompt.trim(),
+          onStage: setStage,
+        });
+        const item: VideoItem = {
+          id: `video-${Date.now()}`,
+          prompt: prompt.trim(),
+          videoUrl,
+          imageUrl: imagePreview,
+          createdAt: Date.now(),
+        };
+        setVideos((prev) => [item, ...prev]);
+        setCurrentVideo(item);
+        setGenerating(false);
+        setStage("");
+      } catch (err: any) {
+        setErrorMsg(err?.message || "生成失败，请检查 ComfyUI 是否在运行");
+        setGenerating(false);
+        setStage("");
+      }
+      return;
+    }
 
     const formData = new FormData();
     if (image) formData.append("image", image);
@@ -426,31 +486,54 @@ const VideoStudio = ({ embedded = false }: { embedded?: boolean }) => {
 
           {/* 生成按钮 */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-            <button
-              onClick={() => {
-                setTunnelMsg("");
-                setTunnelInput("");
-                setShowTunnel(true);
-                checkTunnel();
-              }}
-              className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3.5 py-2 text-xs text-muted-foreground transition-colors hover:border-violet-400/40 hover:text-white"
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  tunnelOnline === null
-                    ? "animate-pulse bg-yellow-400"
-                    : tunnelOnline
-                      ? "bg-emerald-400"
-                      : "bg-red-500"
-                }`}
-              />
-              {tunnelOnline === null
-                ? "检测引擎中..."
-                : tunnelOnline
-                  ? "本地引擎已连接"
-                  : "本地引擎未连接，点击更新地址"}
-              <Link2 className="h-3 w-3 opacity-60 transition-opacity group-hover:opacity-100" />
-            </button>
+            {isNativeApp() ? (
+              <button
+                onClick={() => navigate("/app/settings")}
+                className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3.5 py-2 text-xs text-muted-foreground transition-colors hover:border-violet-400/40 hover:text-white"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    comfyOk === null
+                      ? "animate-pulse bg-yellow-400"
+                      : comfyOk
+                        ? "bg-emerald-400"
+                        : "bg-red-500"
+                  }`}
+                />
+                {comfyOk === null
+                  ? "检测引擎中..."
+                  : comfyOk && comfyUnet
+                    ? `你的 ComfyUI 已连接 · ${comfyUnet}`
+                    : "未接 ComfyUI，点击去设置"}
+                <Server className="h-3 w-3 opacity-60 transition-opacity group-hover:opacity-100" />
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setTunnelMsg("");
+                  setTunnelInput("");
+                  setShowTunnel(true);
+                  checkTunnel();
+                }}
+                className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3.5 py-2 text-xs text-muted-foreground transition-colors hover:border-violet-400/40 hover:text-white"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    tunnelOnline === null
+                      ? "animate-pulse bg-yellow-400"
+                      : tunnelOnline
+                        ? "bg-emerald-400"
+                        : "bg-red-500"
+                  }`}
+                />
+                {tunnelOnline === null
+                  ? "检测引擎中..."
+                  : tunnelOnline
+                    ? "本地引擎已连接"
+                    : "本地引擎未连接，点击更新地址"}
+                <Link2 className="h-3 w-3 opacity-60 transition-opacity group-hover:opacity-100" />
+              </button>
+            )}
             <button
               onClick={handleGenerate}
               disabled={generating}

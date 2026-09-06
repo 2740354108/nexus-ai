@@ -13,7 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import { useSettings } from "@/lib/settings";
+import { isOpenRouter, useSettings } from "@/lib/settings";
 import AIStudio from "@/components/landing/AIStudio";
 import MusicStudio from "@/components/landing/MusicStudio";
 import VideoStudio from "@/components/landing/VideoStudio";
@@ -107,7 +107,7 @@ const MobileApp = () => {
 
         {tab === "me" && (
           <div className="space-y-3 px-4 py-3">
-            {/* 密钥设置：自带密钥模式下的核心入口，始终可见 */}
+            {/* AI 接口设置：自带密钥 / 接自己的服务，核心入口，始终可见 */}
             <Link
               to="/app/settings"
               className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 transition-colors hover:border-cyan-500/40"
@@ -117,9 +117,13 @@ const MobileApp = () => {
                   <KeyRound className="h-4 w-4 text-cyan-300" />
                 </span>
                 <span>
-                  <span className="block text-sm font-medium text-white">密钥设置</span>
+                  <span className="block text-sm font-medium text-white">AI 接口设置</span>
                   <span className="block text-[11px] text-muted-foreground">
-                    {settings.openrouterKey ? "已配置 · AI 对话就绪" : "未配置 · 填密钥后可用"}
+                    {isOpenRouter(settings.chatApiBase)
+                      ? settings.openrouterKey
+                        ? "云端 · 对话就绪"
+                        : "云端 · 填密钥后可用"
+                      : "已接自己的服务 · 对话就绪"}
                   </span>
                 </span>
               </span>
@@ -131,7 +135,7 @@ const MobileApp = () => {
             ) : (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  应用为离线独立模式，AI 功能使用你自己的密钥，无需登录即可使用。
+                  应用为离线独立模式，AI 功能使用你自己的密钥或自己部署的服务，无需登录即可使用。
                 </p>
               </div>
             )}

@@ -74,8 +74,8 @@ function App() {
               <Route path="/space" data-genie-title="我的空间" data-genie-key="Space" element={<PageTransition transition="fade"><SpacePage /></PageTransition>} />
               {/* TCB 登录回调（OAuth 用，邮箱登录不走这里） */}
               <Route path="/auth/callback" data-genie-title="登录中" data-genie-key="Auth" element={<AuthCallback />} />
-              {/* 应用内密钥设置（自带密钥模式） */}
-              <Route path="/app/settings" data-genie-title="密钥设置" data-genie-key="Settings" element={<PageTransition transition="fade"><AppSettings /></PageTransition>} />
+              {/* 应用内 AI 接口设置（自带密钥 / 接自己的服务） */}
+              <Route path="/app/settings" data-genie-title="AI 接口设置" data-genie-key="Settings" element={<PageTransition transition="fade"><AppSettings /></PageTransition>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" data-genie-key="NotFound" data-genie-title="Not Found" element={<PageTransition transition="fade"><NotFound /></PageTransition>} />
             </AnimatedRoutes>

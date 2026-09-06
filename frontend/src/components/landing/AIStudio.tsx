@@ -17,8 +17,8 @@ import {
   Trash2,
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
-import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
-import { streamOpenRouter, type ChatApiMessage } from "@/lib/providers/openrouter";
+import { isNativeApp, isOpenRouter, loadSettings, type AppSettings } from "@/lib/settings";
+import { streamChatCompletion, type ChatApiMessage } from "@/lib/providers/chatClient";
 import { compressImageFile } from "@/lib/utils/image";
 import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
 
@@ -199,7 +199,7 @@ const MarkdownView = ({ content }: { content: string }) => {
 const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boolean; defaultMode?: "chat" | "code" }) => {
   const [tab, setTab] = useState<"chat" | "code">(defaultMode);
   const [configured, setConfigured] = useState<boolean | null>(null);
-  // 自带密钥设置（原生环境下用用户自己的密钥直连官方接口）
+  // 自带密钥 / 自建服务设置（原生环境下直连用户填的接口，不经中间服务器）
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   // 图片上传（拍照 / 相册）
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -229,7 +229,8 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     if (isNativeApp()) {
       loadSettings().then((s) => {
         setAppSettings(s);
-        setConfigured(!!s.openrouterKey);
+        // 走云端需要密钥；接自己的本地/自建服务时不需要密钥，填了地址即可
+        setConfigured(isOpenRouter(s.chatApiBase) ? !!s.openrouterKey : !!s.chatApiBase);
       });
       return;
     }
@@ -273,10 +274,11 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     const onError = handlers.onError;
 
     return (async () => {
-      // 原生应用：用用户自己的密钥直连 OpenRouter，不经过任何中间服务器
+      // 原生应用：用用户自己的密钥，直连云端或用户自己部署的服务，不经过任何中间服务器
       if (isNativeApp()) {
         const s = appSettings ?? (await loadSettings());
-        await streamOpenRouter({
+        await streamChatCompletion({
+          baseUrl: s.chatApiBase,
           apiKey: s.openrouterKey,
           model: s.chatModel,
           mode,
@@ -390,7 +392,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
       },
       onError: (e) => {
         const hint = /image|图片|modalit|multimodal|不支持/i.test(e)
-          ? "。提示：当前模型可能不支持看图，去「我的 → 密钥设置」换一个标了「可看图」的模型。"
+          ? "。提示：当前模型可能不支持看图，去「我的 → AI 接口设置」换一个标了「可看图」的模型。"
           : "";
         setChatError(e + hint);
       },
@@ -482,7 +484,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
         {configured === false && (
           <div className="mx-auto mt-8 max-w-2xl rounded-2xl border border-cyan-400/20 bg-cyan-400/5 px-5 py-4 text-center text-sm text-cyan-200/90">
             <Sparkles className="mr-2 inline h-4 w-4" />
-            AI 引擎接入中——配置好 API Key 后即可启用，敬请期待
+            AI 引擎未接入——去「我的 → AI 接口设置」，填云端密钥，或填你自己电脑上的模型地址
           </div>
         )}
 

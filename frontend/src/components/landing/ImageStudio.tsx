@@ -6,6 +6,7 @@ import { AiBadge } from "../AiBadge";
 import { toast } from "sonner";
 import { isNativeApp, loadSettings } from "@/lib/settings";
 import { buildPollinationsUrl } from "@/lib/providers/pollinations";
+import { generateComfyImage } from "@/lib/providers/comfyClient";
 import {
   Download,
   Trash2,
@@ -67,6 +68,8 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
   const [activeRes, setActiveRes] = useState(RESOLUTIONS[1]);
   const [generating, setGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // 接了自己的 ComfyUI 时显示本地生成进度
+  const [stage, setStage] = useState("");
   const [images, setImages] = useState<ImageItem[]>([]);
   const [selected, setSelected] = useState<ImageItem | null>(null);
   const { user, token } = useAuth();
@@ -116,6 +119,7 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
     }
     setGenerating(true);
     setErrorMsg("");
+    setStage("");
 
     try {
       const suffix = STYLE_PRESETS[activeStyle]?.suffix || "";
@@ -124,14 +128,25 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
       let imageUrl: string;
 
       if (isNativeApp()) {
-        // 原生应用：直连 Pollinations 出图，不经过任何中间服务器
+        // 原生应用：优先用自己电脑上的 ComfyUI，没配才走在线免费接口
         const s = await loadSettings();
-        imageUrl = buildPollinationsUrl({
-          prompt: stylePrompt,
-          width: activeRes.w,
-          height: activeRes.h,
-          token: s.pollinationsToken || undefined,
-        });
+        if (s.comfyUrl && s.comfyCheckpoint) {
+          imageUrl = await generateComfyImage({
+            base: s.comfyUrl,
+            checkpoint: s.comfyCheckpoint,
+            prompt: stylePrompt,
+            width: activeRes.w,
+            height: activeRes.h,
+            onStage: setStage,
+          });
+        } else {
+          imageUrl = buildPollinationsUrl({
+            prompt: stylePrompt,
+            width: activeRes.w,
+            height: activeRes.h,
+            token: s.pollinationsToken || undefined,
+          });
+        }
       } else {
         const resp = await fetch("/api/image/generate", {
           method: "POST",
@@ -165,6 +180,7 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
       setErrorMsg(err?.message || "生成失败，请稍后重试");
     } finally {
       setGenerating(false);
+      setStage("");
     }
   };
 
@@ -292,6 +308,11 @@ const ImageStudio = ({ embedded = false }: { embedded?: boolean }) => {
             )}
           </button>
         </div>
+
+        {/* 本地引擎进度（接了 ComfyUI 时显示） */}
+        {generating && stage && (
+          <p className="mt-3 text-center text-xs text-cyan-300/80">{stage}</p>
+        )}
 
         {/* 错误提示 */}
         <AnimatePresence>
