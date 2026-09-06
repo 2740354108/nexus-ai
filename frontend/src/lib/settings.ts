@@ -31,6 +31,12 @@ export type AppSettings = {
   comfyVae: string;
   /** ComfyUI CLIP 视觉编码器（图生视频可选） */
   comfyClipVision: string;
+  /** 自建技术栈（自动化办公）HTTP 服务地址 */
+  workflowUrl: string;
+  /** 该技术栈服务的密钥（可选，没有就留空） */
+  workflowKey: string;
+  /** 飞书机器人 Webhook（任务结果回传用，可选） */
+  feishuWebhook: string;
 };
 
 const STORAGE_KEY = "nexus.app.settings";
@@ -47,6 +53,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   comfyUnet: "",
   comfyVae: "",
   comfyClipVision: "",
+  workflowUrl: "",
+  workflowKey: "",
+  feishuWebhook: "",
 };
 
 /** 是否使用 OpenRouter（决定「免费看图模型」等功能是否适用） */

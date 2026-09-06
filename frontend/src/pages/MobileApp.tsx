@@ -11,6 +11,7 @@ import {
   LogOut,
   KeyRound,
   ChevronRight,
+  Workflow,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { isOpenRouter, useSettings } from "@/lib/settings";
@@ -19,9 +20,10 @@ import MusicStudio from "@/components/landing/MusicStudio";
 import VideoStudio from "@/components/landing/VideoStudio";
 import ImageStudio from "@/components/landing/ImageStudio";
 import AgnesStudio from "@/components/landing/AgnesStudio";
+import WorkflowStudio from "@/components/landing/WorkflowStudio";
 import SpacePage from "@/pages/SpacePage";
 
-type MainTab = "chat" | "create" | "me";
+type MainTab = "chat" | "create" | "workflow" | "me";
 type CreateTab = "image" | "video" | "music" | "agnes";
 
 const CREATE_TABS: { key: CreateTab; label: string; icon: typeof ImageIcon }[] = [
@@ -34,6 +36,7 @@ const CREATE_TABS: { key: CreateTab; label: string; icon: typeof ImageIcon }[] =
 const NAV: { key: MainTab; label: string; icon: typeof MessageSquare }[] = [
   { key: "chat", label: "聊天", icon: MessageSquare },
   { key: "create", label: "创作", icon: Sparkles },
+  { key: "workflow", label: "自动化", icon: Workflow },
   { key: "me", label: "我的", icon: User },
 ];
 
@@ -104,6 +107,8 @@ const MobileApp = () => {
             {createTab === "agnes" && <AgnesStudio embedded />}
           </div>
         )}
+
+        {tab === "workflow" && <WorkflowStudio />}
 
         {tab === "me" && (
           <div className="space-y-3 px-4 py-3">

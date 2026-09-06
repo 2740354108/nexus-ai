@@ -13,6 +13,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Feather,
 } from "lucide-react";
 import {
   CHAT_MODELS,
@@ -31,6 +32,7 @@ import {
   listUnets,
   listVaes,
 } from "@/lib/providers/comfyClient";
+import { runWorkflow, pushToFeishu } from "@/lib/providers/workflowClient";
 
 /** 从用户自己的 ComfyUI 上拉到的模型清单 */
 const ModelSelect = ({
@@ -115,6 +117,13 @@ const AppSettings = () => {
     clipVisions: string[];
   }>({ checkpoints: [], unets: [], vaes: [], clipVisions: [] });
 
+  // 技术栈（自动化办公）连接测试
+  const [wfState, setWfState] = useState<{ ok: boolean; text: string } | null>(null);
+  const [wfBusy, setWfBusy] = useState(false);
+  // 飞书回传测试
+  const [fsState, setFsState] = useState<{ ok: boolean; text: string } | null>(null);
+  const [fsBusy, setFsBusy] = useState(false);
+
   const cloud = isOpenRouter(draft.chatApiBase);
 
   useEffect(() => {
@@ -197,6 +206,44 @@ const AppSettings = () => {
       }));
     }
     setComfyBusy(false);
+  };
+
+  const handleWfTest = async () => {
+    if (!draft.workflowUrl) return;
+    setWfBusy(true);
+    setWfState(null);
+    let got = "";
+    await runWorkflow({
+      baseUrl: draft.workflowUrl,
+      apiKey: draft.workflowKey,
+      task: "回复：连接成功",
+      handlers: {
+        onToken: (c) => {
+          got += c;
+        },
+        onStatus: () => {},
+        onError: (e) => setWfState({ ok: false, text: e }),
+        onDone: () =>
+          setWfState({
+            ok: true,
+            text: got ? `连接成功，服务返回：${got.slice(0, 60)}` : "连接成功",
+          }),
+      },
+    });
+    setWfBusy(false);
+  };
+
+  const handleFsTest = async () => {
+    if (!draft.feishuWebhook) return;
+    setFsBusy(true);
+    setFsState(null);
+    const r = await pushToFeishu({
+      webhook: draft.feishuWebhook,
+      title: "NEXUS AI 连接测试",
+      content: "这是一条来自 NEXUS AI 的测试消息，说明飞书回传已配置成功。",
+    });
+    setFsState({ ok: r.ok, text: r.text });
+    setFsBusy(false);
   };
 
   // 已填过地址就自动连一次，进页面直接能选模型
@@ -591,6 +638,119 @@ const AppSettings = () => {
           )}
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
             填你自己电脑上 ComfyUI 的局域网地址，手机和电脑需在同一 WiFi 下。选好模型后，画图与视频都会跑在你自己的显卡上。
+          </p>
+        </section>
+
+        {/* 技术栈连接（自动化办公）：接你自己部署的 HTTP 服务 */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-white">
+            <PlugZap className="h-3.5 w-3.5 text-amber-400" />
+            技术栈地址（自动化办公）
+            <span className="text-[10px] font-normal text-white/40">（你自己的 HTTP 服务）</span>
+          </label>
+          <input
+            type="text"
+            value={draft.workflowUrl}
+            onChange={(e) => {
+              setDraft((d) => ({ ...d, workflowUrl: e.target.value.trim() }));
+              setWfState(null);
+            }}
+            placeholder="http://192.168.1.10:8000"
+            autoComplete="off"
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 font-mono text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-amber-500/50"
+          />
+          <input
+            type="text"
+            value={draft.workflowKey}
+            onChange={(e) => setDraft((d) => ({ ...d, workflowKey: e.target.value.trim() }))}
+            placeholder="服务密钥（没有就留空）"
+            autoComplete="off"
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white placeholder:text-white/25 outline-none transition-colors focus:border-amber-500/50"
+          />
+          <button
+            type="button"
+            onClick={handleWfTest}
+            disabled={wfBusy || !draft.workflowUrl}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/30 py-2 text-xs text-white/80 transition-colors hover:border-amber-500/40 disabled:opacity-50"
+          >
+            {wfBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlugZap className="h-3.5 w-3.5 text-amber-400" />
+            )}
+            {wfBusy ? "正在连接…" : "测试连接"}
+          </button>
+          {wfState && (
+            <p
+              className={`mt-2 flex items-start gap-1.5 rounded-lg px-3 py-2 text-[11px] leading-relaxed ${
+                wfState.ok ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
+              }`}
+            >
+              {wfState.ok ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
+              {wfState.text}
+            </p>
+          )}
+          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            App 会向这个地址 POST 一个 JSON：<span className="font-mono text-white/50">{'{ "task": "你的任务" }'}</span>
+            。你的服务返回纯文本，或 <span className="font-mono text-white/50">{'{ "result": "..." }'}</span>，也支持流式返回。
+            记得在服务端开启 CORS（允许跨域），手机和电脑需在同一 WiFi 下。
+          </p>
+        </section>
+
+        {/* 飞书回传：任务结果自动推到飞书群 */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-white">
+            <Feather className="h-3.5 w-3.5 text-sky-400" />
+            飞书机器人 Webhook
+            <span className="text-[10px] font-normal text-white/40">（结果回传可选）</span>
+          </label>
+          <input
+            type="text"
+            value={draft.feishuWebhook}
+            onChange={(e) => {
+              setDraft((d) => ({ ...d, feishuWebhook: e.target.value.trim() }));
+              setFsState(null);
+            }}
+            placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+            autoComplete="off"
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 font-mono text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-sky-500/50"
+          />
+          <button
+            type="button"
+            onClick={handleFsTest}
+            disabled={fsBusy || !draft.feishuWebhook}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/30 py-2 text-xs text-white/80 transition-colors hover:border-sky-500/40 disabled:opacity-50"
+          >
+            {fsBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Feather className="h-3.5 w-3.5 text-sky-400" />
+            )}
+            {fsBusy ? "正在发送…" : "发送测试消息"}
+          </button>
+          {fsState && (
+            <p
+              className={`mt-2 flex items-start gap-1.5 rounded-lg px-3 py-2 text-[11px] leading-relaxed ${
+                fsState.ok ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
+              }`}
+            >
+              {fsState.ok ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
+              {fsState.text}
+            </p>
+          )}
+          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            在飞书群里「设置 → 群机器人 → 添加机器人」拿到 Webhook 地址。任务跑完后，App 会把结果自动发到这个群。
           </p>
         </section>
 
