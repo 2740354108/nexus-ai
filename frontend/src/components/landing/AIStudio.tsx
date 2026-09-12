@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
 import { isNativeApp, isOpenRouter, loadSettings, type AppSettings } from "@/lib/settings";
-import { streamChatCompletion, type ChatApiMessage, MODEL_ROUTER_TOOL, executeModelRouterTool } from "@/lib/providers/chatClient";
+import { streamChatCompletion, type ChatApiMessage, MODEL_ROUTER_TOOL, executeModelRouterTool, buildRouterHint } from "@/lib/providers/chatClient";
 import { compressImageFile } from "@/lib/utils/image";
 import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
 
@@ -279,14 +279,22 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
       // 原生应用：用用户自己的密钥，直连云端或用户自己部署的服务，不经过任何中间服务器
       if (isNativeApp()) {
         const s = appSettings ?? (await loadSettings());
+        // 若预设备用模型，注入系统提示让主模型自动转接
+        const hint = buildRouterHint({ endpoint: s.routerEndpoint, model: s.routerModel });
+        const routedMsgs = hint ? [{ role: "system", content: hint }, ...msgs] : msgs;
         await streamChatCompletion({
           baseUrl: s.chatApiBase,
           apiKey: s.openrouterKey,
           model: s.chatModel,
           mode,
-          messages: msgs,
+          messages: routedMsgs,
           tools: [MODEL_ROUTER_TOOL],
-          executeTool: executeModelRouterTool,
+          executeTool: (call) =>
+            executeModelRouterTool(call, {
+              endpoint: s.routerEndpoint,
+              model: s.routerModel,
+              apiKey: s.routerApiKey,
+            }),
           handlers: { onToken, onModel, onError, onToolCall: (name) => setToolBusy(name) },
         });
         return;

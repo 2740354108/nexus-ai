@@ -703,6 +703,47 @@ const AppSettings = () => {
           </p>
         </section>
 
+        {/* 备用模型：对话中可被主模型自动调用 */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-white">
+            <PlugZap className="h-3.5 w-3.5 text-violet-400" />
+            备用模型（对话可自动调用）
+            <span className="text-[10px] font-normal text-white/40">（可选）</span>
+          </label>
+          <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+            填好后，主模型在合适时会自动把子任务转给这个模型，无需每次手填地址。例如你电脑上的 Ollama / LM Studio，或另一个云端模型。
+          </p>
+          <input
+            type="text"
+            value={draft.routerEndpoint}
+            onChange={(e) => setDraft((d) => ({ ...d, routerEndpoint: e.target.value.trim() }))}
+            placeholder="http://192.168.1.100:11434/v1"
+            autoComplete="off"
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 font-mono text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-violet-500/50"
+          />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={draft.routerModel}
+              onChange={(e) => setDraft((d) => ({ ...d, routerModel: e.target.value.trim() }))}
+              placeholder="模型名，如 qwen3-32b"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-violet-500/50"
+            />
+            <input
+              type="password"
+              value={draft.routerApiKey}
+              onChange={(e) => setDraft((d) => ({ ...d, routerApiKey: e.target.value.trim() }))}
+              placeholder="密钥（本地模型可留空）"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-violet-500/50"
+            />
+          </div>
+        </section>
+
         {/* 飞书回传：任务结果自动推到飞书群 */}
         <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
           <label className="flex items-center gap-1.5 text-xs font-medium text-white">

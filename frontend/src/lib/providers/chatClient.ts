@@ -289,22 +289,28 @@ export const MODEL_ROUTER_TOOL: ChatTool = {
 };
 
 /** MODEL_ROUTER_TOOL 的执行器：调用另一个模型并拿回文本结果 */
-export async function executeModelRouterTool(call: ToolCall): Promise<string> {
+export async function executeModelRouterTool(
+  call: ToolCall,
+  defaults?: { endpoint?: string; model?: string; apiKey?: string },
+): Promise<string> {
   let args: Record<string, unknown> = {};
   try {
     args = JSON.parse(call.arguments || "{}");
   } catch {
     return "工具参数解析失败";
   }
-  const endpoint = args.endpoint as string;
-  const model = args.model as string;
+  // 参数缺失时回退到设置里的预设默认值
+  const endpoint = (args.endpoint as string) || defaults?.endpoint || "";
+  const model = (args.model as string) || defaults?.model || "";
   const prompt = args.prompt as string;
-  if (!endpoint || !model || !prompt) return "缺少必要参数 endpoint / model / prompt";
+  if (!endpoint || !model || !prompt) {
+    return "缺少必要参数 endpoint / model / prompt（可在「我的 → AI 接口设置」里预设备用模型）";
+  }
 
   try {
     const text = await callModelOnce({
       baseUrl: endpoint,
-      apiKey: (args.api_key as string) || "",
+      apiKey: (args.api_key as string) || defaults?.apiKey || "",
       model,
       messages: [{ role: "user", content: String(prompt) }],
     });
@@ -312,4 +318,13 @@ export async function executeModelRouterTool(call: ToolCall): Promise<string> {
   } catch (e: any) {
     return `调用子模型失败：${e?.message || e}`;
   }
+}
+
+/**
+ * 若已预设备用模型，生成一段系统提示，让主模型知道默认地址与模型名，
+ * 从而自动把子任务转给备用模型，无需用户每次手填。
+ */
+export function buildRouterHint(defaults?: { endpoint?: string; model?: string }): string | null {
+  if (!defaults?.endpoint || !defaults?.model) return null;
+  return `你已配置一个备用 AI 模型，接口地址为 ${defaults.endpoint}，模型名为 ${defaults.model}。当某个子任务更适合由该模型处理时，调用 call_another_model 工具，endpoint 与 model 可使用上述默认值。`;
 }

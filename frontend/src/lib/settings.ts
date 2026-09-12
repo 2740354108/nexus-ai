@@ -37,6 +37,15 @@ export type AppSettings = {
   workflowKey: string;
   /** 飞书机器人 Webhook（任务结果回传用，可选） */
   feishuWebhook: string;
+  /**
+   * 备用模型（对话中可被主模型调用）。
+   * 预设后，主模型在合适时会自动把子任务转给它，无需每次手填。
+   */
+  routerEndpoint: string;
+  /** 备用模型名，例如 qwen3-32b、deepseek-chat */
+  routerModel: string;
+  /** 备用模型密钥（本地模型可留空） */
+  routerApiKey: string;
 };
 
 const STORAGE_KEY = "nexus.app.settings";
@@ -56,6 +65,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   workflowUrl: "",
   workflowKey: "",
   feishuWebhook: "",
+  routerEndpoint: "",
+  routerModel: "",
+  routerApiKey: "",
 };
 
 /** 是否使用 OpenRouter（决定「免费看图模型」等功能是否适用） */
