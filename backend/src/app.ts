@@ -16,6 +16,7 @@ import { imageRouter } from './modules/image'
 import { agnesRouter } from './modules/agnes'
 import { authRouter } from './modules/auth'
 import { historiesRouter } from './modules/histories'
+import { mcpRouter } from './modules/mcp'
 // ============================================
 // Add your domain module imports here
 // ============================================
@@ -70,6 +71,9 @@ export const createApp = (): Application => {
   // 账号系统与我的空间（自托管 JWT，TCB publish key 不可用时兜底）
   app.use(`${env.API_PREFIX}/auth`, authRouter)
   app.use(`${env.API_PREFIX}/histories`, historiesRouter)
+
+  // MCP 转发网关：把 /api/mcp 转发到本地运行的 nexus-mcp 服务器
+  app.use(env.API_PREFIX, mcpRouter)
 
   // ============================================
   // Add your domain module routes here
