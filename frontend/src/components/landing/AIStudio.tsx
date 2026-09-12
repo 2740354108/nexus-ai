@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
 import { isNativeApp, isOpenRouter, loadSettings, type AppSettings } from "@/lib/settings";
-import { streamChatCompletion, type ChatApiMessage } from "@/lib/providers/chatClient";
+import { streamChatCompletion, type ChatApiMessage, MODEL_ROUTER_TOOL, executeModelRouterTool } from "@/lib/providers/chatClient";
 import { compressImageFile } from "@/lib/utils/image";
 import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
 
@@ -213,6 +213,8 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
+  // 工具调用提示（如 AI 正在调用另一个模型）
+  const [toolBusy, setToolBusy] = useState<string | null>(null);
 
   // 代码状态
   const [lang, setLang] = useState("TypeScript");
@@ -283,7 +285,9 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
           model: s.chatModel,
           mode,
           messages: msgs,
-          handlers: { onToken, onModel, onError },
+          tools: [MODEL_ROUTER_TOOL],
+          executeTool: executeModelRouterTool,
+          handlers: { onToken, onModel, onError, onToolCall: (name) => setToolBusy(name) },
         });
         return;
       }
@@ -398,6 +402,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
       },
     });
     setSending(false);
+    setToolBusy(null);
     setPendingImage(null);
   };
 
@@ -687,6 +692,12 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                       <ImagePlus className="h-4 w-4" />
                     )}
                   </button>
+                  {toolBusy && (
+                    <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-violet-500/15 px-3 py-1.5 text-[11px] text-violet-200">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300" />
+                      正在调用工具：{toolBusy === "call_another_model" ? "另一个 AI 模型" : toolBusy}
+                    </div>
+                  )}
                   <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}

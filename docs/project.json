@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI 移动应用",
   "app_slug": "nexus-ai",
-  "version_description": "支持接入自建对话与ComfyUI服务",
+  "version_description": "新增自动化办公接技术栈与飞书回传",
   "preview_type": "mobile"
 }
