@@ -1,0 +1,24 @@
+{
+  "name": "nexus-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NEXUS AI 的 MCP 服务器：把本地知识库与对话能力暴露给 Claude Code 等 MCP 客户端",
+  "bin": {
+    "nexus-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
