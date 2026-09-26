@@ -38,7 +38,7 @@
 别人（或你自己）在装好 Node.js 的电脑上，一行命令即可——**不需要先发 npm**，直接从你的 GitHub 仓库下载安装：
 
 ```bash
-npx github:2740354108/nexus-ai-apk
+npx github:2740354108/nexus-ai
 ```
 
 安装器会自动：检查/安装 pnpm、安装 PostgreSQL、从你的 GitHub 克隆本项目、安装依赖、生成配置、注册 `nexusai` 全局命令。
@@ -46,7 +46,7 @@ npx github:2740354108/nexus-ai-apk
 可选：指定安装目录
 
 ```bash
-npx github:2740354108/nexus-ai-apk my-folder
+npx github:2740354108/nexus-ai my-folder
 ```
 
 > 把命令里的 `2740354108` 换成你自己的 GitHub 账号。`npx github:` 形式首次运行会把桌面打包工具（Electron）一起装上，属正常一次性下载；若想更轻量，可改用下面的 npm 形式。
@@ -67,8 +67,8 @@ cd installer && npm publish
 
 ```bash
 # 1. 克隆
-git clone https://github.com/2740354108/nexus-ai-apk.git
-cd nexus-ai-apk
+git clone https://github.com/2740354108/nexus-ai.git
+cd nexus-ai
 
 # 2. 安装依赖
 pnpm install
