@@ -1,1 +1,2 @@
-neverBuiltDependencies: []
+# 声明 backend 为独立安装单元（避免向上查找工作区）
+packages: []

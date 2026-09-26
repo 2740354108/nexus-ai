@@ -81,16 +81,24 @@ async function ensurePnpm() {
 // 本地部署使用内嵌数据库（PGlite，零安装），不再强制安装 PostgreSQL。
 // 如需连接外部 PostgreSQL，可在 backend/.env 设置 DATABASE_URL=postgresql://...
 
+// 执行 pnpm 安装。新版 pnpm 处于“严格模式”时，只要存在被拦截的构建脚本
+// （如 esbuild、electron），就会以退出码 1 结束，导致安装中断。这里显式把该行为
+// 降级为提醒；真正需要执行构建脚本的依赖，已在各 package.json 的
+// pnpm.onlyBuiltDependencies 中放行。
+function pnpmInstall(cwd) {
+  return run('pnpm', ['install', '--config.strict-dep-builds=false'], { cwd })
+}
+
 async function installDeps(dir) {
   step('安装依赖（backend / frontend / nexus-bot）…')
   for (const sub of ['backend', 'frontend', 'nexus-bot']) {
     const p = join(dir, sub)
-    if (existsSync(p)) await run('pnpm', ['install'], { cwd: p })
+    if (existsSync(p)) await pnpmInstall(p)
   }
   // 根目录 devDeps（electron，仅桌面打包需要）可选安装
   if (existsSync(join(dir, 'package.json'))) {
     try {
-      await run('pnpm', ['install'], { cwd: dir })
+      await pnpmInstall(dir)
     } catch {
       /* 桌面打包依赖可选，失败不影响核心功能 */
     }
