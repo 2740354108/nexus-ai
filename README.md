@@ -154,6 +154,21 @@ DATABASE_URL=postgresql://云端用户:云端密码@云端主机:5432/nexus
 | `nexusai serve` | 启动后端 + 前端，浏览器访问 `http://localhost:5173` |
 | `nexusai help` | 帮助 |
 
+### 更新与排障
+
+代码会**自动保持最新**：每次启动都会在后台静默对齐一次最新代码（每 6 小时最多一次，存在本地改动时不动），正常情况下你不需要管更新。
+
+如果你的命令行里**没有 `update` 这个子命令**，说明本机是很旧的版本（模型/接口都可能已过期）。整段复制粘贴下面四行，重装一次即可，之后上面的自动更新就会生效：
+
+```powershell
+cd $env:USERPROFILE\Desktop
+Remove-Item -Recurse -Force nexus-ai -ErrorAction SilentlyContinue
+git clone --depth 1 https://github.com/2740354108/nexus-ai.git nexus-ai
+node nexus-ai\installer\installer.mjs
+```
+
+重装会保留你的聊天数据（`nexus-data/`）和配置（`~/.nexusai/config.json`），Key 不用重填。
+
 ## 桌面应用打包（Windows）
 
 ```bash

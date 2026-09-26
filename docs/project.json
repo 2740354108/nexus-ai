@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI 助手",
   "app_slug": "nexus-ai",
-  "version_description": "新增 nexus update 与自动配置向导",
+  "version_description": "免费模型下架自动切换可用模型",
   "preview_type": "pc"
 }

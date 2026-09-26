@@ -7,6 +7,8 @@ import {
   writeFileSync,
   mkdirSync,
   chmodSync,
+  rmSync,
+  renameSync,
 } from 'fs'
 import { resolve, join } from 'path'
 import { platform } from 'os'
@@ -56,6 +58,31 @@ function isRepoHere() {
     existsSync(join(process.cwd(), 'frontend', 'package.json'))
 }
 
+// 新版 CLI 必含的标记：用它判断本地代码是否真的更新到位。
+const FRESH_MARKER = 'nexus-self-update-ok'
+
+function isFreshCode(dir) {
+  const f = join(dir, 'cli', 'nexusai.mjs')
+  try {
+    return existsSync(f) && readFileSync(f, 'utf-8').includes(FRESH_MARKER)
+  } catch {
+    return false
+  }
+}
+
+// 把已存在的目录更新到远端 main，返回是否真的拿到最新代码。
+async function refreshExisting(dest) {
+  if (!existsSync(join(dest, '.git'))) return false
+  try {
+    await run('git', ['-C', dest, 'remote', 'set-url', 'origin', REPO], { silent: true })
+    await run('git', ['-C', dest, 'fetch', '--depth', '1', 'origin', 'main'], { silent: true })
+    await run('git', ['-C', dest, 'reset', '--hard', 'FETCH_HEAD'], { silent: true })
+  } catch {
+    return false
+  }
+  return isFreshCode(dest)
+}
+
 async function prepareApp() {
   if (isRepoHere()) {
     ok('已在仓库目录内，直接使用当前目录')
@@ -63,27 +90,44 @@ async function prepareApp() {
   }
   const dest = resolve(process.cwd(), TARGET)
   if (existsSync(dest)) {
-    // 目录已存在：若是 git 仓库，直接拉取最新代码并强制对齐到远端 main。
-    // 浅克隆用 fetch + reset 比 pull 更稳，且不会被本地改动挡住，确保一定用上修复后的版本。
-    if (existsSync(join(dest, '.git'))) {
-      step(`目录 ${TARGET} 已存在，正在更新到最新代码…`)
-      try {
-        await run('git', ['-C', dest, 'fetch', '--depth', '1', 'origin', 'main'], { silent: true })
-        await run('git', ['-C', dest, 'reset', '--hard', 'FETCH_HEAD'], { silent: true })
-        ok('已更新到最新代码')
-      } catch {
-        warn('无法从 GitHub 更新（网络或 git 问题），继续使用现有代码')
-      }
-      // 更新后自检：修复版 CLI 必含该标志。若缺失说明本地仍是旧代码，明确告诉用户怎么修。
-      const cliFile = join(dest, 'cli', 'nexusai.mjs')
-      if (existsSync(cliFile) && !readFileSync(cliFile, 'utf-8').includes('isPlaceholderBase')) {
-        warn('检测到本地代码仍是旧版本（自动更新未生效）。')
-        warn(`请进入 ${dest} 手动执行：`)
-        warn('  git fetch --depth 1 origin main && git reset --hard FETCH_HEAD')
-      }
-    } else {
-      warn(`目录 ${TARGET} 已存在且非 git 仓库，跳过克隆，直接使用现有代码`)
+    // 目录已存在：先尝试原地更新到最新代码（保速度、不重装依赖）。
+    step(`目录 ${TARGET} 已存在，正在更新到最新代码…`)
+    if (await refreshExisting(dest)) {
+      ok('已更新到最新代码')
+      return dest
     }
+    // 不是 git 仓库 / 拉取失败 / 拉完仍是旧代码 —— 一律删掉重新下载，
+    // 保证用户一定拿到最新版本（此前"检测到旧代码却只提示不修复"正是问题根源）。
+    warn('现有目录无法自动更新，改为重新下载最新代码（会保留你的聊天数据）…')
+    const dataBackup = resolve(process.cwd(), '.nexus-data-backup')
+    const envBackup = resolve(process.cwd(), '.nexus-backend-env-backup')
+    let hasData = false
+    let hasEnv = false
+    try {
+      if (existsSync(join(dest, 'nexus-data'))) {
+        rmSync(dataBackup, { recursive: true, force: true })
+        renameSync(join(dest, 'nexus-data'), dataBackup)
+        hasData = true
+      }
+    } catch {}
+    try {
+      const beEnv = join(dest, 'backend', '.env')
+      if (existsSync(beEnv)) {
+        rmSync(envBackup, { force: true })
+        renameSync(beEnv, envBackup)
+        hasEnv = true
+      }
+    } catch {}
+    rmSync(dest, { recursive: true, force: true })
+    step(`从 GitHub 克隆 NEXUS AI → ${TARGET}`)
+    await run('git', ['clone', '--depth', '1', REPO, TARGET])
+    try {
+      if (hasData) renameSync(dataBackup, join(dest, 'nexus-data'))
+    } catch {}
+    try {
+      if (hasEnv) renameSync(envBackup, join(dest, 'backend', '.env'))
+    } catch {}
+    if (!isFreshCode(dest)) warn('代码可能不是最新（网络受限时常见），功能仍可正常使用。')
     return dest
   }
   step(`从 GitHub 克隆 NEXUS AI → ${TARGET}`)
@@ -115,7 +159,7 @@ async function installDeps(dir) {
   step('安装依赖（backend / frontend / nexus-bot）…')
   for (const sub of ['backend', 'frontend', 'nexus-bot']) {
     const p = join(dir, sub)
-    if (existsSync(p)) await pnpmInstall(p)
+    if (existsSync(join(p, 'package.json'))) await pnpmInstall(p)
   }
   // 根目录 devDeps（electron，仅桌面打包需要）可选安装
   if (existsSync(join(dir, 'package.json'))) {
@@ -248,6 +292,8 @@ async function main() {
   console.log('  3. 桌面应用：nexusai')
   console.log('  4. 浏览器访问：nexus serve    → http://localhost:5173')
   console.log('  5. 查看当前配置：nexus config')
+  console.log('')
+  console.log('  代码会自动保持最新，平时不用管更新（也可随时运行 nexus update）')
   console.log('')
   console.log(`${c.yellow}如果提示「无法将 nexus 项识别为 cmdlet」：${c.reset}`)
   console.log('  · 关掉这个终端窗口，重新开一个再试（PATH 需要新窗口才生效）；')

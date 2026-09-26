@@ -12,7 +12,11 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const VERSION = '1.2.0'
+const VERSION = '1.3.0'
+// 仓库地址（后台自更新与 `update` 命令共用）
+const REPO_URL = 'https://github.com/2740354108/nexus-ai.git'
+// 新版代码标记：安装器用它判断本地是否真的更新成功（此字符串请勿删除）
+const SELF_UPDATE_MARKER = 'nexus-self-update-ok'
 
 // 识别本次是被当作 `nexus`（短名、默认进终端聊天）还是 `nexusai`（原命令）调用。
 // nexus 的快捷入口会在参数最前面插入 --nexus 标记。
@@ -30,6 +34,51 @@ const NEXUS_DIR = join(homedir(), '.nexusai')
 const CRED_FILE = join(NEXUS_DIR, 'credentials.json')
 const CONFIG_FILE = join(NEXUS_DIR, 'config.json')
 const ENV_FILE = join(ROOT, 'backend', '.env')
+const UPDATE_STAMP = join(NEXUS_DIR, '.last-update-check')
+const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+/**
+ * 启动时在后台静默更新一次代码（每 6 小时最多一次），下次启动即生效。
+ * 目的：用户永远跑在最新版本上，不用记任何更新命令；模型/接口有变化也能自动跟上。
+ * 完全后台执行，不阻塞、不打扰；任何异常都静默忽略，绝不影响正常使用。
+ * 如需关闭：设置环境变量 NEXUS_NO_AUTOUPDATE=1
+ */
+function selfUpdateInBackground() {
+  try {
+    if (process.env.NEXUS_NO_AUTOUPDATE === '1') return
+    if (!existsSync(join(ROOT, '.git'))) return
+    // 工作区存在“已跟踪文件的改动”时不自动更新，避免覆盖本地修改（开发者场景）。
+    // 只看已跟踪文件的改动：nexus-data / node_modules 等未跟踪内容不算，否则会永远跳过。
+    try {
+      const dirty = execSync('git status --porcelain --untracked-files=no', {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim()
+      if (dirty) return
+    } catch {
+      return
+    }
+    const now = Date.now()
+    let last = 0
+    try {
+      last = Number(readFileSync(UPDATE_STAMP, 'utf-8').trim()) || 0
+    } catch {}
+    if (now - last < UPDATE_INTERVAL_MS) return
+    mkdirSync(NEXUS_DIR, { recursive: true })
+    writeFileSync(UPDATE_STAMP, String(now))
+    const q = (p) => '"' + p + '"'
+    const cmdline =
+      `git -C ${q(ROOT)} fetch --depth 1 origin main && ` +
+      `git -C ${q(ROOT)} reset --hard FETCH_HEAD`
+    const child = spawn(cmdline, { detached: true, stdio: 'ignore', shell: true })
+    child.on('error', () => {})
+    child.unref()
+  } catch {
+    /* 自更新只是加分项，失败不影响使用 */
+  }
+}
 
 // 解析 KEY=VALUE 形式的配置文件（零依赖）
 function parseEnvFile(path) {
@@ -682,24 +731,38 @@ function gitShortRev() {
   }
 }
 
+// 打印一段可直接整段复制粘贴的重装命令。不走 npx（避免命中旧缓存），
+// 直接 git clone 官方仓库，保证一定拿到最新代码。
+function printReinstall() {
+  console.log('   cd $env:USERPROFILE\\Desktop')
+  console.log('   Remove-Item -Recurse -Force nexus-ai -ErrorAction SilentlyContinue')
+  console.log(`   git clone --depth 1 ${REPO_URL} nexus-ai`)
+  console.log('   node nexus-ai\\installer\\installer.mjs')
+}
+
 function updateMode() {
   const cur = gitShortRev()
   console.log(`当前版本：${VERSION}（${cur}）`)
   if (!existsSync(join(ROOT, '.git'))) {
-    console.log('⚠️ 当前目录不是 git 仓库，无法自动更新。')
-    console.log('   请重新安装：npx github:2740354108/nexus-ai')
+    console.log('⚠️ 当前目录不是 git 仓库，无法自动更新。请按下面重装一次（整段复制粘贴）：')
+    printReinstall()
     return
   }
   console.log('正在从 GitHub 更新到最新版本…')
   try {
-    execSync('git fetch --depth 1 origin main', { cwd: ROOT, stdio: 'inherit' })
-    execSync('git reset --hard FETCH_HEAD', { cwd: ROOT, stdio: 'inherit' })
-  } catch (e) {
-    console.log('❌ 更新失败（多为网络问题）：' + ((e && e.message) || e))
-    console.log('   可稍后重试；或重新安装：npx github:2740354108/nexus-ai')
-    process.exit(1)
+    // 兜底把远端地址纠正为官方仓库，避免之前指向镜像/无令牌地址导致拉不到代码
+    try {
+      execSync(`git remote set-url origin ${REPO_URL}`, { cwd: ROOT, stdio: 'ignore' })
+    } catch {}
+    execSync('git fetch --depth 1 origin main', { cwd: ROOT, stdio: 'ignore' })
+    execSync('git reset --hard FETCH_HEAD', { cwd: ROOT, stdio: 'ignore' })
+  } catch {
+    console.log('❌ 更新失败（多为网络问题）。可稍后重试，或按下面重装一次（整段复制粘贴）：')
+    printReinstall()
+    return
   }
-  console.log(`✅ 代码已更新：${cur} → ${gitShortRev()}`)
+  const after = gitShortRev()
+  console.log(cur === after ? '✅ 已是最新版本。' : `✅ 代码已更新：${cur} → ${after}`)
   for (const sub of ['backend', 'frontend', 'nexus-bot']) {
     if (!existsSync(join(ROOT, sub))) continue
     console.log(`安装依赖：${sub}…`)
@@ -714,6 +777,10 @@ function updateMode() {
 
 // 不带子命令时：nexus 默认进终端聊天，nexusai 默认启动桌面应用
 const cmd = process.argv[2] || (isNexus ? 'chat' : 'app')
+
+// 除更新命令本身外，每次启动都在后台静默对齐一次最新代码（节流为 6 小时一次）。
+if (!['update', 'upgrade'].includes(cmd)) selfUpdateInBackground()
+
 switch (cmd) {
   case 'chat':
     // 不 await：终端对话靠 stdin 保持进程存活；await 在管道输入下会因 stdin 提前
