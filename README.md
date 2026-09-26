@@ -49,7 +49,7 @@ npx github:2740354108/nexus-ai
 npx github:2740354108/nexus-ai my-folder
 ```
 
-> 把命令里的 `2740354108` 换成你自己的 GitHub 账号。`npx github:` 形式首次运行会把桌面打包工具（Electron）一起装上，属正常一次性下载；若想更轻量，可改用下面的 npm 形式。
+> `npx github:` 形式首次运行会把桌面打包工具（Electron）一起装上，属正常一次性下载；若想更轻量，可改用下面的 npm 形式。
 
 ### 另一种方式：先发布 npm 安装器（更快）
 
@@ -70,11 +70,11 @@ cd installer && npm publish
 git clone https://github.com/2740354108/nexus-ai.git
 cd nexus-ai
 
-# 2. 安装依赖
-pnpm install
-cd backend && pnpm install && cd ..
-cd frontend && pnpm install && cd ..
-cd nexus-bot && pnpm install && cd ..
+# 2. 安装依赖（根目录 + 三个子目录，共 4 次）
+pnpm install                # 根目录
+pnpm -C backend install     # 后端
+pnpm -C frontend install    # 前端
+pnpm -C nexus-bot install   # 机器人（可选）
 
 # 3. 准备数据库（PostgreSQL）
 createdb nexus
@@ -112,7 +112,7 @@ AI 密钥获取：https://openrouter.ai/keys
    RELAY_TRIAL_PER_IP=5                # 未登录访客每 IP 每天试用次数（可选，默认 5）
    ```
 2. **改默认值并推 GitHub**：把 `backend/.env.example` 里的 `AI_API_BASE` 改成你的中继地址（如 `https://你的域名/api/ai/v1`），`AI_API_KEY` 改成同一个 `AI_BOT_TOKEN` 值，然后推到 GitHub。
-3. **下载者**：`npx github:你的名/nexus-ai` 装完后，先在终端注册/登录即可对话：
+3. **下载者**：`npx github:2740354108/nexus-ai` 装完后，先在终端注册/登录即可对话：
    ```
    nexusai register 你的邮箱 密码     # 注册并领取每日免费额度
    nexusai login   你的邮箱 密码     # 已注册则直接登录

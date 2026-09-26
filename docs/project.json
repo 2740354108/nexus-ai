@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "重命名仓库为 nexus-ai",
+  "version_description": "上传代码到 GitHub 仓库 nexus-ai",
   "preview_type": "mobile"
 }
