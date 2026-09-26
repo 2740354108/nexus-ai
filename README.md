@@ -142,6 +142,10 @@ DATABASE_URL=postgresql://云端用户:云端密码@云端主机:5432/nexus
 
 | 命令 | 作用 |
 |------|------|
+| `nexus` | 一敲直接进终端对话（短命令，最省事；未配置时自动弹配置向导） |
+| `nexus setup` | 配置向导：填 AI Key 或中继地址（第一次必做） |
+| `nexus config` | 查看当前配置、服务地址、Key、版本与登录状态 |
+| `nexus update` | 更新到最新版本（自动拉代码 + 装依赖） |
 | `nexusai` / `nexusai app` | 打开桌面应用（GUI） |
 | `nexusai chat` | 终端对话，直接输入问题；`@图片路径` 发图识图；`/clear` 清空；`/exit` 退出 |
 | `nexusai register 邮箱 密码` | 注册中继账号并领取每日免费额度 |

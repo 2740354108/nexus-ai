@@ -1,8 +1,8 @@
 {
   "project_type": "web",
   "sub_project_type": "",
-  "name": "NEXUS AI",
+  "name": "NEXUS AI 助手",
   "app_slug": "nexus-ai",
-  "version_description": "新增短命令 nexus 默认进终端聊天",
+  "version_description": "修复占位域名报错并新增配置向导",
   "preview_type": "pc"
 }

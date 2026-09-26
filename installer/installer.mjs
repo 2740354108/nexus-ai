@@ -63,21 +63,23 @@ async function prepareApp() {
   }
   const dest = resolve(process.cwd(), TARGET)
   if (existsSync(dest)) {
-    // 目录已存在：若是 git 仓库，尝试拉取最新代码，确保用上修复后的版本
+    // 目录已存在：若是 git 仓库，直接拉取最新代码并强制对齐到远端 main。
+    // 浅克隆用 fetch + reset 比 pull 更稳，且不会被本地改动挡住，确保一定用上修复后的版本。
     if (existsSync(join(dest, '.git'))) {
-      step(`目录 ${TARGET} 已存在，尝试更新到最新代码…`)
+      step(`目录 ${TARGET} 已存在，正在更新到最新代码…`)
       try {
-        await run('git', ['-C', dest, 'pull', '--ff-only'], { silent: true })
+        await run('git', ['-C', dest, 'fetch', '--depth', '1', 'origin', 'main'], { silent: true })
+        await run('git', ['-C', dest, 'reset', '--hard', 'FETCH_HEAD'], { silent: true })
         ok('已更新到最新代码')
       } catch {
-        // 浅克隆无法直接 fast-forward，改为 fetch 后重置到远端 HEAD
-        try {
-          await run('git', ['-C', dest, 'fetch', '--depth', '1', 'origin', 'main'], { silent: true })
-          await run('git', ['-C', dest, 'reset', '--hard', 'FETCH_HEAD'], { silent: true })
-          ok('已更新到最新代码')
-        } catch {
-          warn('更新失败（可能有本地改动），继续使用现有代码')
-        }
+        warn('无法从 GitHub 更新（网络或 git 问题），继续使用现有代码')
+      }
+      // 更新后自检：修复版 CLI 必含该标志。若缺失说明本地仍是旧代码，明确告诉用户怎么修。
+      const cliFile = join(dest, 'cli', 'nexusai.mjs')
+      if (existsSync(cliFile) && !readFileSync(cliFile, 'utf-8').includes('isPlaceholderBase')) {
+        warn('检测到本地代码仍是旧版本（自动更新未生效）。')
+        warn(`请进入 ${dest} 手动执行：`)
+        warn('  git fetch --depth 1 origin main && git reset --hard FETCH_HEAD')
       }
     } else {
       warn(`目录 ${TARGET} 已存在且非 git 仓库，跳过克隆，直接使用现有代码`)

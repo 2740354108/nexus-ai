@@ -6,12 +6,13 @@ import { fileURLToPath } from 'url'
 import { createInterface } from 'readline'
 import https from 'https'
 import http from 'http'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
+const VERSION = '1.2.0'
 
 // 识别本次是被当作 `nexus`（短名、默认进终端聊天）还是 `nexusai`（原命令）调用。
 // nexus 的快捷入口会在参数最前面插入 --nexus 标记。
@@ -199,17 +200,18 @@ async function buildUserMessage(input) {
 }
 
 async function chatMode() {
-  // 预检：地址没配或还是示例占位域名时，直接给出一句话能照做的指引
-  if (isPlaceholderBase()) {
-    console.log('⚠️ 还没配置 AI 服务，当前地址是示例占位域名（无效）：')
-    console.log('   ' + API_BASE)
-    console.log(`   运行 ${CMD} setup 按提示填一下，一分钟搞定。\n`)
-    process.exit(1)
-  }
-  if (!API_BASE) {
-    console.log('⚠️ 还没配置 AI 服务地址。')
-    console.log(`   运行 ${CMD} setup 按提示填一下（选 1「用自己的 Key」最省事）。\n`)
-    process.exit(1)
+  // 预检：没配地址、或还是示例占位域名时，就地打开配置向导，
+  // 省得用户再去猜该敲哪个命令（配置完自动继续对话）。
+  if (isPlaceholderBase() || !API_BASE) {
+    console.log('⚠️ 还没配置 AI 服务' + (isPlaceholderBase() ? '（当前是无效的示例地址）' : '地址') + '，先花一分钟配置一下：\n')
+    await setupMode()
+    const fresh = { ...parseEnvFile(ENV_FILE), ...loadUserConfig() }
+    API_BASE = (fresh.AI_API_BASE || '').replace(/\/+$/, '')
+    API_KEY = fresh.AI_API_KEY || ''
+    if (!API_BASE || isPlaceholderBase()) {
+      console.log('仍未配置完成，已退出。')
+      process.exit(1)
+    }
   }
   if (!authToken()) {
     const rb = relayBase()
@@ -470,6 +472,7 @@ function configMode() {
   console.log('  服务地址 : ' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '  ← 示例占位地址，无效' : ''))
   console.log('  API Key  : ' + mask(API_KEY))
   console.log('  模型     : ' + MODEL)
+  console.log('  版本     : ' + VERSION + '（' + gitShortRev() + '）')
   console.log('  中继地址 : ' + (relayBase() || '（无）'))
   console.log('  登录状态 : ' + (creds.token ? '已登录 ' + (creds.email || '') : '未登录'))
   console.log('  用户配置 : ' + CONFIG_FILE)
@@ -531,6 +534,7 @@ function help() {
   ${CMD}               开始终端对话（一敲即聊）
   ${CMD} setup         配置向导：填 AI Key 或中继地址（第一次用先跑这个）
   ${CMD} config        查看当前配置与登录状态
+  ${CMD} update        更新到最新版本（自动拉代码 + 装依赖）
   ${CMD} chat          终端对话模式（同 ${CMD}）
   ${CMD} app           启动桌面应用（GUI 窗口）
   ${CMD} serve         启动本地后端 + 前端（浏览器访问 http://localhost:5173）
@@ -545,17 +549,68 @@ function help() {
   - 配置存在 ${CONFIG_FILE}，改配置重跑 ${CMD} setup 即可。`)
 }
 
+// 更新到最新版本：直接从 GitHub 拉取代码并强制对齐，再补装依赖。
+// 有了它，以后更新只需一条 `nexus update`，不必再记 npx 那一长串。
+function gitShortRev() {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
+function updateMode() {
+  const cur = gitShortRev()
+  console.log(`当前版本：${VERSION}（${cur}）`)
+  if (!existsSync(join(ROOT, '.git'))) {
+    console.log('⚠️ 当前目录不是 git 仓库，无法自动更新。')
+    console.log('   请重新安装：npx github:2740354108/nexus-ai')
+    return
+  }
+  console.log('正在从 GitHub 更新到最新版本…')
+  try {
+    execSync('git fetch --depth 1 origin main', { cwd: ROOT, stdio: 'inherit' })
+    execSync('git reset --hard FETCH_HEAD', { cwd: ROOT, stdio: 'inherit' })
+  } catch (e) {
+    console.log('❌ 更新失败（多为网络问题）：' + ((e && e.message) || e))
+    console.log('   可稍后重试；或重新安装：npx github:2740354108/nexus-ai')
+    process.exit(1)
+  }
+  console.log(`✅ 代码已更新：${cur} → ${gitShortRev()}`)
+  for (const sub of ['backend', 'frontend', 'nexus-bot']) {
+    if (!existsSync(join(ROOT, sub))) continue
+    console.log(`安装依赖：${sub}…`)
+    try {
+      execSync('pnpm install --config.strict-dep-builds=false', { cwd: join(ROOT, sub), stdio: 'inherit' })
+    } catch {
+      console.log(`⚠️ ${sub} 依赖安装有告警，通常不影响使用。`)
+    }
+  }
+  console.log(`\n✅ 更新完成。运行 ${CMD} 即可使用最新版本。`)
+}
+
 // 不带子命令时：nexus 默认进终端聊天，nexusai 默认启动桌面应用
 const cmd = process.argv[2] || (isNexus ? 'chat' : 'app')
 switch (cmd) {
   case 'chat':
-    chatMode()
+    // 不 await：终端对话靠 stdin 保持进程存活；await 在管道输入下会因 stdin 提前
+    // 结束而产生「unsettled top-level await」告警并以退出码 13 结束。
+    chatMode().catch((e) => {
+      console.error('出错：' + ((e && e.message) || e))
+      process.exit(1)
+    })
     break
   case 'setup':
     setupMode()
     break
   case 'config':
     configMode()
+    break
+  case 'update':
+  case 'upgrade':
+    updateMode()
     break
   case 'register':
     registerMode(process.argv[3], process.argv[4])
