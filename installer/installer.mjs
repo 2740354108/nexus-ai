@@ -5,6 +5,8 @@ import {
   copyFileSync,
   readFileSync,
   writeFileSync,
+  mkdirSync,
+  chmodSync,
 } from 'fs'
 import { resolve, join } from 'path'
 import { platform } from 'os'
@@ -140,14 +142,65 @@ async function setupEnv(dir) {
   warn('请在 backend/.env 填入你自己的 AI_API_KEY（OpenRouter 等），否则无法对话。')
 }
 
-async function linkCli(dir) {
-  step('将 nexusai 命令安装到全局…')
+// npm 的全局可执行文件目录。Node.js 安装时该目录会加入系统 PATH，
+// 因此把启动脚本写在这里，新开的终端一定能找到 nexusai 命令。
+function npmGlobalBinDir() {
   try {
-    await run('pnpm', ['link', '--global'], { cwd: dir })
-    ok('已注册全局命令 nexusai')
+    const prefix = execSync('npm prefix -g', { encoding: 'utf-8' }).trim()
+    if (!prefix) return null
+    return platform() === 'win32' ? prefix : join(prefix, 'bin')
   } catch {
-    warn('全局链接失败，可手动在目录内运行：pnpm nexusai chat')
+    return null
   }
+}
+
+// 直接写入 nexusai 启动脚本（不依赖 pnpm 的 PATH 配置，最稳妥）
+function writeShims(cliPath) {
+  const binDir = npmGlobalBinDir()
+  if (!binDir) return false
+  try {
+    mkdirSync(binDir, { recursive: true })
+    if (platform() === 'win32') {
+      writeFileSync(join(binDir, 'nexusai.cmd'), `@echo off\r\nnode "${cliPath}" %*\r\n`)
+      writeFileSync(join(binDir, 'nexusai.ps1'), `node "${cliPath}" $args\n`)
+    } else {
+      const f = join(binDir, 'nexusai')
+      writeFileSync(f, `#!/bin/sh\nexec node "${cliPath}" "$@"\n`)
+      chmodSync(f, 0o755)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function linkCli(dir) {
+  step('注册 nexusai 命令…')
+  const cliPath = join(dir, 'cli', 'nexusai.mjs')
+
+  // 方式一：pnpm link --global（需要 pnpm 全局目录在 PATH 中）
+  try {
+    await run('pnpm', ['link', '--global'], { cwd: dir, silent: true })
+    if (has('nexusai')) {
+      ok('已注册全局命令 nexusai')
+      return
+    }
+  } catch {
+    /* 失败则走方式二 */
+  }
+
+  // 方式二：写入 npm 全局可执行目录（Node 安装时已加入 PATH，最可靠）
+  if (writeShims(cliPath) && has('nexusai')) {
+    ok('已注册全局命令 nexusai（写入 npm 全局目录）')
+    return
+  }
+
+  // 两种都失败：给出不依赖全局命令的启动方式，保证照样能用
+  warn('未能自动注册全局命令 nexusai，可直接用下面任一方式启动（效果完全一样）：')
+  warn(`  cd ${dir}`)
+  warn('  pnpm nexusai chat      # 终端对话')
+  warn('  pnpm nexusai serve     # 浏览器打开 http://localhost:5173')
+  warn('  node cli/nexusai.mjs chat')
 }
 
 async function main() {
@@ -178,11 +231,18 @@ async function main() {
   await setupEnv(dir)
   await linkCli(dir)
   console.log(`\n${c.green}${c.bold}安装完成！${c.reset}`)
+  console.log(`项目目录：${dir}`)
   console.log('接下来：')
   console.log('  1. 编辑 backend/.env，填入你的 AI_API_KEY（OpenRouter: https://openrouter.ai/keys）')
   console.log('  2. 终端对话：nexusai chat')
   console.log('  3. 桌面应用：nexusai')
   console.log('  4. 浏览器访问：nexusai serve  → http://localhost:5173')
+  console.log('')
+  console.log(`${c.yellow}如果提示「无法将 nexusai 项识别为 cmdlet」：${c.reset}`)
+  console.log('  · 关掉这个终端窗口，重新开一个再试（PATH 需要新窗口才生效）；')
+  console.log('  · 或者直接用下面两条等效命令（不用全局命令也能跑）：')
+  console.log(`      cd "${dir}"`)
+  console.log('      pnpm nexusai chat')
   console.log('详细文档见 README.md')
 }
 

@@ -43,6 +43,8 @@ npx github:2740354108/nexus-ai
 
 安装器会自动：检查/安装 pnpm、从你的 GitHub 克隆本项目、安装依赖（含内嵌数据库，无需你装任何数据库软件）、生成配置、注册 `nexusai` 全局命令。
 
+> 若终端提示「无法将 `nexusai` 项识别为 cmdlet / command not found」，说明全局命令没进 PATH：**重开一个终端窗口**再试；仍不行就进项目目录用 `pnpm nexusai chat`，效果完全一样。
+
 可选：指定安装目录
 
 ```bash
