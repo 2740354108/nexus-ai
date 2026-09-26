@@ -116,6 +116,14 @@ let VISION_MODEL = cfg.AI_VISION_MODEL || 'dots-studio/dots-3-note-preview:free'
 // 本次实际成功使用的模型（用于 config 展示与写回配置）
 let ACTIVE_MODEL = null
 
+// 自动换模型的提示只出现一次，避免同一行每轮都刷屏。
+const _switchNoticed = new Set()
+function noticeSwitch(to) {
+  if (_switchNoticed.has(to)) return
+  _switchNoticed.add(to)
+  console.log(`（已自动换用可用模型：${to}）`)
+}
+
 // 静态候选（优先后备）；即使全部失效，也会从线上免费列表里动态补齐。
 const TEXT_MODEL_CANDIDATES = [
   'nvidia/nemotron-3-super-120b-a12b:free',
@@ -321,7 +329,12 @@ async function completeWithFallback(messages) {
       const reply = await requestCompletions(messages, id)
       ACTIVE_MODEL = id
       if (id !== current) {
-        console.log(`（原模型 ${current} 已不可用，已自动切换为 ${id}）`)
+        // 记住这次真正可用的模型：既写回配置文件，也同步更新内存变量。
+        // 少了内存这一步，下一句话会再拿已下架的旧模型去试、失败再切一次，
+        // 于是同一句提示反复出现，还白费一次失败请求。
+        if (wantImage) VISION_MODEL = id
+        else MODEL = id
+        noticeSwitch(id)
         saveUserConfig(wantImage ? { AI_VISION_MODEL: id } : { AI_MODEL: id })
       }
       return reply

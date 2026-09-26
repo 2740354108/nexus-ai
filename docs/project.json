@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI 助手",
   "app_slug": "nexus-ai",
-  "version_description": "免费模型下架自动切换可用模型",
+  "version_description": "启动自动更新，根治本机代码过期问题",
   "preview_type": "pc"
 }
