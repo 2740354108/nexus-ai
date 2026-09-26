@@ -78,31 +78,35 @@ pnpm -C backend install     # 后端
 pnpm -C frontend install    # 前端
 pnpm -C nexus-bot install   # 机器人（可选）
 
-# 3. 配置（默认已用内嵌数据库，无需建库）
-cp backend/.env.example backend/.env
-# 编辑 backend/.env，至少填入 AI_API_KEY（不填也能用每日免费额度）
+# 3. 配置 AI（第一次必做，一条命令搞定）
+pnpm nexusai setup     # 向导：选「用自己的 Key」→ 粘贴 Key 即可（自动写好配置）
 
 # 4. 启动
-pnpm nexusai chat      # 终端对话
+pnpm nexusai chat      # 终端对话（装过全局命令后直接敲 nexus）
 pnpm nexusai           # 桌面应用
 pnpm nexusai serve     # 网页（http://localhost:5173）
 ```
 
-## 配置说明（backend/.env）
+## 配置说明
+
+配置由 `nexusai setup` 自动写入两处：项目内 `backend/.env`（网页/桌面端读取）和 `~/.nexusai/config.json`（终端读取，优先级更高，更新代码不会丢）。用 `nexusai config` 可随时查看。
 
 | 配置 | 说明 |
 |------|------|
-| `AI_API_KEY` | **必填**。OpenRouter 等模型密钥，决定能否对话 |
+| `AI_API_BASE` | AI 服务地址。自带 Key 用 `https://openrouter.ai/api/v1`；连中继时填你的中继地址（…/api/ai/v1） |
+| `AI_API_KEY` | **必填**。自带 Key 模式填你自己的模型密钥；连中继模式填中继的公开令牌 |
 | `AI_MODEL` / `AI_VISION_MODEL` | 对话 / 识图模型，默认免费模型 |
 | `DB_MODE` | `local`（默认，内嵌数据库，零安装）或 `cloud`（云端 TCB） |
 | `NEXUS_DATA_DIR` | 内嵌数据库存放目录，默认 `./nexus-data` |
 | `DATABASE_URL` | 可选。填 `postgresql://...` 则改用外部 PostgreSQL（与云端共用数据时用） |
 
-AI 密钥获取：https://openrouter.ai/keys
+AI 密钥获取（免费）：https://openrouter.ai/keys
 
-## 让别人免填 key（托管中继）
+> 仓库默认**不内置任何可用服务器地址**，装完须配置一次。如果看到 `Hostname/IP does not match certificate` 报错，说明地址填的是示例占位域名，运行 `nexusai setup` 重新填写即可。
 
-想让下载你项目的人**零配置直接能用 AI**，而你的真实 key 又不泄露，做法是：你自己在公网部署一份后端当"中继"，真 key 只放在那里。
+## 让别人免填 key（可选：托管中继）
+
+这一步**不是必须的**。只有当你希望下载你项目的人「零配置直接能用 AI」时才需要做，且需要你**自己有一台公网服务器**。没部署中继也完全能用——下载者各自 `nexusai setup` 填自己的 Key 即可。
 
 1. **站长（你）部署中继**：在一台公网服务器上跑本项目的后端，设置：
    ```
@@ -111,16 +115,17 @@ AI 密钥获取：https://openrouter.ai/keys
    RELAY_DAILY_LIMIT=20                # 每个注册账号每天免费对话次数（可选，默认 20）
    RELAY_TRIAL_PER_IP=5                # 未登录访客每 IP 每天试用次数（可选，默认 5）
    ```
-2. **改默认值并推 GitHub**：把 `backend/.env.example` 里的 `AI_API_BASE` 改成你的中继地址（如 `https://你的域名/api/ai/v1`），`AI_API_KEY` 改成同一个 `AI_BOT_TOKEN` 值，然后推到 GitHub。
-3. **下载者**：`npx github:2740354108/nexus-ai` 装完后，先在终端注册/登录即可对话：
+2. **告诉下载者你的中继地址**：下载者 `nexusai setup` 选 2 填入即可；也可把 `backend/.env.example` 的 `AI_API_BASE` 默认值改成你的中继地址，让下载者免填。
+3. **下载者**：`npx github:2740354108/nexus-ai` 装完后：
    ```
+   nexusai setup                      # 选 2，填中继地址
    nexusai register 你的邮箱 密码     # 注册并领取每日免费额度
    nexusai login   你的邮箱 密码     # 已注册则直接登录
    nexusai chat                      # 开始对话（每天 20 次免费）
    ```
    网页/桌面端也会自动弹出"免费试用 · 注册/登录"入口。所有下载者**全程看不到你的真 key**。
 
-安全说明：开启 `AI_BOT_TOKEN` 后即进入"公开中继模式"——未注册访客只有极少量 IP 试用额度，注册后按账号计每日额度，超限提示第二天再来；`AI_BOT_TOKEN` 可公开、可随时重置，真实 key 始终只在你的服务器，不会产生你的计费风险。想无限流或超额了，下载者也可按"用法 B"填自己的 key。
+安全说明：开启 `AI_BOT_TOKEN` 后即进入"公开中继模式"——未注册访客只有极少量 IP 试用额度，注册后按账号计每日额度，超限提示第二天再来；`AI_BOT_TOKEN` 可公开、可随时重置，真实 key 始终只在你的服务器，不会产生你的计费风险。想无限流或超额了，下载者也可 `nexusai setup` 填自己的 key。
 
 ## 云端互通（本地连云端数据库）
 

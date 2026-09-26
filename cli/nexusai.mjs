@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { resolve, dirname, join } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
@@ -24,9 +24,14 @@ if (nexusFlagIdx >= 0) {
 // 命令名：用于提示文字，确保用户看到的启动命令与实际一致。
 const CMD = isNexus ? 'nexus' : 'nexusai'
 
-// 读取 backend/.env 中的 AI 配置（手动解析，零依赖）
-function loadEnv() {
-  const path = join(ROOT, 'backend', '.env')
+// 用户级配置目录（与登录态同目录，方便统一管理）
+const NEXUS_DIR = join(homedir(), '.nexusai')
+const CRED_FILE = join(NEXUS_DIR, 'credentials.json')
+const CONFIG_FILE = join(NEXUS_DIR, 'config.json')
+const ENV_FILE = join(ROOT, 'backend', '.env')
+
+// 解析 KEY=VALUE 形式的配置文件（零依赖）
+function parseEnvFile(path) {
   const cfg = {}
   if (existsSync(path)) {
     for (const line of readFileSync(path, 'utf-8').split('\n')) {
@@ -38,23 +43,30 @@ function loadEnv() {
   }
   return cfg
 }
-const cfg = loadEnv()
-const API_BASE = (cfg.AI_API_BASE || 'https://openrouter.ai/api/v1').replace(/\/$/, '')
-const API_KEY = cfg.AI_API_KEY || ''
-const MODEL = cfg.AI_MODEL || 'z-ai/glm-5.2:free'
-const VISION_MODEL = cfg.AI_VISION_MODEL || MODEL
 
-// 中继地址：默认从 AI_API_BASE 推导（https://host/api/ai/v1 -> https://host/api/relay）
-// 也可用 NEXUS_RELAY_URL 显式覆盖
-function relayBase() {
-  const override = cfg.NEXUS_RELAY_URL
-  if (override) return override.replace(/\/$/, '') + '/relay'
-  const m = API_BASE.match(/(.*)\/ai\/v1$/)
-  if (m) return m[1] + '/relay'
-  return null
+function loadUserConfig() {
+  try {
+    return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'))
+  } catch {
+    return {}
+  }
 }
 
-const CRED_FILE = join(homedir(), '.nexusai', 'credentials.json')
+// 配置优先级：用户级配置（nexus setup 写入）> 项目 backend/.env
+const cfg = { ...parseEnvFile(ENV_FILE), ...loadUserConfig() }
+
+let API_BASE = (cfg.AI_API_BASE || '').replace(/\/+$/, '')
+let API_KEY = cfg.AI_API_KEY || ''
+let MODEL = cfg.AI_MODEL || 'z-ai/glm-5.2:free'
+let VISION_MODEL = cfg.AI_VISION_MODEL || MODEL
+
+// 文档里的示例占位域名：不是真实服务器。命中时直接给出可执行指引，
+// 避免用户看到 “Hostname/IP does not match certificate's altnames” 这类看不懂的报错。
+const PLACEHOLDER_HOSTS = ['yourdomain.com', 'your-domain.com', 'example.com']
+function isPlaceholderBase() {
+  return !!API_BASE && PLACEHOLDER_HOSTS.some((h) => API_BASE.includes(h))
+}
+
 function loadCreds() {
   try {
     return JSON.parse(readFileSync(CRED_FILE, 'utf-8'))
@@ -68,13 +80,61 @@ function saveCreds(c) {
 }
 const creds = loadCreds()
 
-// chat 走 AI_API_BASE（OpenAI 兼容）；若已登录中继则带用户令牌，否则回退用自己的 API_KEY
-const bearerToken = creds.token || API_KEY
+// 登录令牌优先；没有则回退到自己填的 AI_API_KEY
+function authToken() {
+  return creds.token || API_KEY
+}
+
+// setup 里刚填完地址就要注册时，用它覆盖模块加载时算出的中继地址
+let RELAY_OVERRIDE = null
+
+// 中继地址：默认从 AI_API_BASE 推导（https://host/api/ai/v1 -> https://host/api/relay）
+// 也可用 NEXUS_RELAY_URL 显式覆盖
+function relayBase() {
+  if (RELAY_OVERRIDE) return RELAY_OVERRIDE.replace(/\/+$/, '') + '/api/relay'
+  const override = cfg.NEXUS_RELAY_URL
+  if (override) return override.replace(/\/+$/, '') + '/relay'
+  const m = API_BASE.match(/(.*)\/ai\/v1$/)
+  if (m) return m[1] + '/relay'
+  return null
+}
+
+/** 把底层网络/证书错误翻译成人话，并给出下一步该做什么。 */
+function explainError(e) {
+  const m = String((e && e.message) || e)
+  if (/altnames|CERT|self.signed|UNABLE_TO_VERIFY|Hostname\/IP/i.test(m))
+    return (
+      `连不上 AI 服务地址：${API_BASE}\n` +
+      '   原因：该地址的证书与域名不匹配，多半填的是示例占位域名或已失效的地址。\n' +
+      `   解决：运行 ${CMD} setup 重新填写可用的 AI 服务地址。`
+    )
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|ERR_INVALID_URL/i.test(m))
+    return (
+      `连不上 AI 服务地址：${API_BASE || '（未配置）'}\n` +
+      '   原因：域名解析失败（地址写错、域名不存在或网络不通）。\n' +
+      `   解决：运行 ${CMD} setup 重新填写。`
+    )
+  if (/ECONNREFUSED/i.test(m))
+    return (
+      `连不上 AI 服务地址：${API_BASE}\n` +
+      '   原因：对方拒绝连接（服务没启动，或本地服务地址不对）。\n' +
+      `   解决：若用本机服务，先运行 ${CMD} serve；否则运行 ${CMD} setup 改地址。`
+    )
+  if (/超时|timeout|ETIMEDOUT/i.test(m))
+    return `请求超时：${API_BASE}\n   解决：检查网络，或运行 ${CMD} setup 换一个 AI 服务地址。`
+  if (/401|403|Unauthorized|Incorrect API key|No auth|invalid.*key/i.test(m))
+    return (
+      `AI 密钥无效或未配置。\n` +
+      `   解决：运行 ${CMD} setup 填入你自己的 Key（https://openrouter.ai/keys 可免费申请）。`
+    )
+  return m
+}
 
 const SYSTEM_PROMPT =
   '你是 NEXUS AI，一个本地运行的多模态助手，擅长回答各类问题、写代码、分析图片。回答简洁友好，中文为主。'
 
 function requestCompletions(messages) {
+  if (!API_BASE) return Promise.reject(new Error('未配置 AI 服务地址（请运行 ' + CMD + ' setup）'))
   const useVision = messages.some((m) => Array.isArray(m.content))
   const model = useVision ? VISION_MODEL : MODEL
   const body = JSON.stringify({ model, messages, stream: false })
@@ -87,7 +147,7 @@ function requestCompletions(messages) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${bearerToken}`,
+          Authorization: `Bearer ${authToken()}`,
           'HTTP-Referer': 'https://nexus.local',
           'X-Title': 'NEXUS AI Local',
         },
@@ -139,14 +199,28 @@ async function buildUserMessage(input) {
 }
 
 async function chatMode() {
-  if (!bearerToken) {
+  // 预检：地址没配或还是示例占位域名时，直接给出一句话能照做的指引
+  if (isPlaceholderBase()) {
+    console.log('⚠️ 还没配置 AI 服务，当前地址是示例占位域名（无效）：')
+    console.log('   ' + API_BASE)
+    console.log(`   运行 ${CMD} setup 按提示填一下，一分钟搞定。\n`)
+    process.exit(1)
+  }
+  if (!API_BASE) {
+    console.log('⚠️ 还没配置 AI 服务地址。')
+    console.log(`   运行 ${CMD} setup 按提示填一下（选 1「用自己的 Key」最省事）。\n`)
+    process.exit(1)
+  }
+  if (!authToken()) {
     const rb = relayBase()
     if (rb) {
       console.log('⚠️ 你连的是 NEXUS 中继，需要先注册登录才能使用（每天免费额度）。')
       console.log(`   注册：${CMD} register 你的邮箱 密码`)
       console.log(`   登录：${CMD} login 你的邮箱 密码`)
+      console.log(`   或改用自己的 Key：${CMD} setup`)
     } else {
-      console.log('⚠️ 未配置 AI_API_KEY，请在 backend/.env 填入 OpenRouter 等密钥后重试。')
+      console.log('⚠️ 未配置 AI_API_KEY。')
+      console.log(`   运行 ${CMD} setup 填入你的 Key（https://openrouter.ai/keys 免费申请）。`)
     }
     process.exit(1)
   }
@@ -170,27 +244,50 @@ async function chatMode() {
       messages.push({ role: 'assistant', content: reply })
       console.log(reply + '\n')
     } catch (e) {
-      console.log('出错了: ' + e.message + '\n')
+      console.log('出错了: ' + explainError(e) + '\n')
     }
   }
   rl.close()
 }
 
-function ask(question) {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(question, (a) => {
-      rl.close()
-      resolve(a.trim())
+// 交互提问：共用一个 readline 实例 + 行队列。
+// 直接用 rl.question 在管道/粘贴输入时存在竞态（后一行的 line 事件可能早于提问注册而丢失），
+// 改为先把行缓存进队列，提问时按序取，交互与管道输入都稳定。
+let _rl = null
+let _lineQueue = []
+let _lineWaiters = []
+function getReader() {
+  if (!_rl) {
+    _rl = createInterface({ input: process.stdin, output: process.stdout, terminal: !!process.stdin.isTTY })
+    _rl.on('line', (l) => {
+      if (_lineWaiters.length) _lineWaiters.shift()(l)
+      else _lineQueue.push(l)
     })
-  })
+  }
+  return _rl
+}
+function nextLine() {
+  getReader()
+  if (_lineQueue.length) return Promise.resolve(_lineQueue.shift())
+  return new Promise((res) => _lineWaiters.push(res))
+}
+function prompt(question) {
+  process.stdout.write(question)
+  return nextLine().then((a) => (a || '').trim())
+}
+function closePrompter() {
+  if (_rl) {
+    _rl.close()
+    _rl = null
+  }
+  _lineWaiters = []
 }
 
 function relayPost(path, body) {
   const rb = relayBase()
   if (!rb) {
     console.log('⚠️ 未检测到 NEXUS 中继地址。请把 backend/.env 的 AI_API_BASE 指向中继（…/api/ai/v1），')
-    console.log('   或设置 NEXUS_RELAY_URL，再执行 register / login。')
+    console.log(`   或运行 ${CMD} setup 填写中继地址。`)
     process.exit(1)
   }
   const url = new URL(rb + path)
@@ -219,9 +316,18 @@ function relayPost(path, body) {
 }
 
 async function registerMode(email, password) {
-  if (!email) email = await ask('邮箱：')
-  if (!password) password = await ask('密码（至少 6 位）：')
-  const { status, json } = await relayPost('/register', { email, password })
+  if (!email) email = await prompt('邮箱：')
+  if (!password) password = await prompt('密码（至少 6 位）：')
+  closePrompter()
+  let res
+  try {
+    res = await relayPost('/register', { email, password })
+  } catch (e) {
+    console.log('❌ 注册失败（连不上中继）：')
+    console.log('   ' + explainError(e))
+    process.exit(1)
+  }
+  const { status, json } = res
   if (status >= 200 && status < 300 && json.token) {
     creds.token = json.token
     creds.email = email
@@ -235,9 +341,18 @@ async function registerMode(email, password) {
 }
 
 async function loginMode(email, password) {
-  if (!email) email = await ask('邮箱：')
-  if (!password) password = await ask('密码：')
-  const { status, json } = await relayPost('/login', { email, password })
+  if (!email) email = await prompt('邮箱：')
+  if (!password) password = await prompt('密码：')
+  closePrompter()
+  let res
+  try {
+    res = await relayPost('/login', { email, password })
+  } catch (e) {
+    console.log('❌ 登录失败（连不上中继）：')
+    console.log('   ' + explainError(e))
+    process.exit(1)
+  }
+  const { status, json } = res
   if (status >= 200 && status < 300 && json.token) {
     creds.token = json.token
     creds.email = email
@@ -276,6 +391,90 @@ async function meMode() {
   } else {
     console.log(`令牌已失效，请重新登录（${CMD} login）。`)
   }
+}
+
+// 把配置写回 backend/.env（网页端也读这个文件，保持两端一致）
+function upsertEnvKeys(keys) {
+  // 没有 .env 时先按示例补齐，避免只剩两行的残缺配置
+  if (!existsSync(ENV_FILE) && existsSync(ENV_FILE + '.example')) copyFileSync(ENV_FILE + '.example', ENV_FILE)
+  const lines = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf-8').split('\n') : []
+  for (const [k, v] of Object.entries(keys)) {
+    const idx = lines.findIndex((l) => new RegExp(`^\\s*${k}\\s*=`).test(l))
+    const line = `${k}=${v}`
+    if (idx >= 0) lines[idx] = line
+    else lines.push(line)
+  }
+  writeFileSync(ENV_FILE, lines.join('\n'))
+}
+
+// 写入用户级配置（不受项目代码更新影响）
+function saveUserConfig(keys) {
+  const merged = { ...loadUserConfig(), ...keys }
+  mkdirSync(NEXUS_DIR, { recursive: true })
+  writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2))
+}
+
+async function setupMode() {
+  try {
+    return await setupModeInner()
+  } finally {
+    closePrompter()
+  }
+}
+
+async function setupModeInner() {
+  console.log('NEXUS AI 配置向导\n')
+  console.log('当前 AI 服务地址：' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '   ← 示例占位地址，无效' : ''))
+  console.log('\n请选择接入方式（输入 1 或 2）：')
+  console.log('  1) 用我自己的 AI Key —— 推荐。去 https://openrouter.ai/keys 免费申请，无限流、最稳。')
+  console.log('  2) 连我自己的中继服务器 —— 需要你已有公网地址（想给多人免 Key 用时选这个）。')
+  const choice = await prompt('请输入 1 或 2：')
+
+  if (choice === '2') {
+    let url = (await prompt('中继地址（如 https://你的域名）：')).replace(/\/+$/, '')
+    if (!url) return console.log('已取消（没有输入地址）。')
+    if (!/\/api\/ai\/v1$/.test(url)) url += '/api/ai/v1'
+    const token = (await prompt('中继令牌 [直接回车用默认 nexus-public-demo]：')) || 'nexus-public-demo'
+    RELAY_OVERRIDE = url.replace(/\/api\/ai\/v1$/, '')
+    API_BASE = url
+    API_KEY = token
+    saveUserConfig({ AI_API_BASE: url, AI_API_KEY: token })
+    upsertEnvKeys({ AI_API_BASE: url, AI_API_KEY: token })
+    console.log('\n✅ 已保存中继地址，接下来注册领取每日额度。')
+    await registerMode()
+    return
+  }
+
+  const key = await prompt('请粘贴你的 AI Key（sk-or- 开头）：')
+  if (!key) return console.log('已取消（没有输入 Key）。')
+  API_BASE = 'https://openrouter.ai/api/v1'
+  API_KEY = key
+  saveUserConfig({ AI_API_BASE: API_BASE, AI_API_KEY: key, AI_MODEL: MODEL })
+  upsertEnvKeys({ AI_API_BASE: API_BASE, AI_API_KEY: key })
+  process.stdout.write('\n正在验证 Key 是否可用… ')
+  try {
+    await requestCompletions([{ role: 'user', content: '你好' }])
+    console.log('✅ 通过')
+  } catch (e) {
+    console.log('⚠️ 没通过')
+    console.log('   ' + explainError(e))
+    console.log('   （不一定是 Key 错，也可能是模型名或网络问题）')
+  }
+  console.log('\n✅ 配置完成！现在直接敲 ' + CMD + ' 就能聊天了。')
+  console.log('   配置已保存在：' + CONFIG_FILE + '（含你的 Key，请勿外传）')
+}
+
+function configMode() {
+  const mask = (s) => (s ? s.slice(0, 8) + '…' + s.slice(-4) : '（空）')
+  console.log('NEXUS AI 当前配置')
+  console.log('  服务地址 : ' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '  ← 示例占位地址，无效' : ''))
+  console.log('  API Key  : ' + mask(API_KEY))
+  console.log('  模型     : ' + MODEL)
+  console.log('  中继地址 : ' + (relayBase() || '（无）'))
+  console.log('  登录状态 : ' + (creds.token ? '已登录 ' + (creds.email || '') : '未登录'))
+  console.log('  用户配置 : ' + CONFIG_FILE)
+  console.log('  项目配置 : ' + ENV_FILE)
+  if (!API_BASE || isPlaceholderBase()) console.log(`\n提示：运行 ${CMD} setup 完成配置。`)
 }
 
 function serveMode() {
@@ -329,19 +528,21 @@ function help() {
   console.log(`NEXUS AI 本地入口
 
 用法：
-  ${CMD}               启动桌面应用（GUI 窗口）
-  ${CMD} chat         终端对话模式（想问什么直接敲）
+  ${CMD}               开始终端对话（一敲即聊）
+  ${CMD} setup         配置向导：填 AI Key 或中继地址（第一次用先跑这个）
+  ${CMD} config        查看当前配置与登录状态
+  ${CMD} chat          终端对话模式（同 ${CMD}）
+  ${CMD} app           启动桌面应用（GUI 窗口）
+  ${CMD} serve         启动本地后端 + 前端（浏览器访问 http://localhost:5173）
   ${CMD} register      注册中继账号（${CMD} register 邮箱 密码）
   ${CMD} login         登录中继账号（${CMD} login 邮箱 密码）
   ${CMD} me            查看当前登录与每日额度
-  ${CMD} serve        启动本地后端 + 前端服务（浏览器访问 http://localhost:5173）
-  ${CMD} app          同 ${CMD}，启动桌面应用
-  ${CMD} help         显示本帮助
+  ${CMD} help          显示本帮助
 
 说明：
-  - 连的是 NEXUS 中继时，需先 register/login 领取每日免费额度；
-  - 用的是自己的 AI Key（backend/.env 的 AI_API_KEY）则无需登录，直接 chat；
-  - 短命令 ${CMD === 'nexus' ? 'nexus' : 'nexus'}（不带参数）会直接进入终端对话。`)
+  - 用别人的中继：先 register/login 领取每日免费额度，再 chat；
+  - 用自己的 AI Key：${CMD} setup 选 1，填一次即可，无限流、最稳；
+  - 配置存在 ${CONFIG_FILE}，改配置重跑 ${CMD} setup 即可。`)
 }
 
 // 不带子命令时：nexus 默认进终端聊天，nexusai 默认启动桌面应用
@@ -349,6 +550,12 @@ const cmd = process.argv[2] || (isNexus ? 'chat' : 'app')
 switch (cmd) {
   case 'chat':
     chatMode()
+    break
+  case 'setup':
+    setupMode()
+    break
+  case 'config':
+    configMode()
     break
   case 'register':
     registerMode(process.argv[3], process.argv[4])

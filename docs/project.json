@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "加固 nexusai 命令注册，修复 Windows 找不到命令",
+  "version_description": "新增短命令 nexus 默认进终端聊天",
   "preview_type": "pc"
 }

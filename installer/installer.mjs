@@ -139,7 +139,7 @@ async function setupEnv(dir) {
   // 本地默认使用内嵌数据库，无需外部 PostgreSQL；如需连接外部 PostgreSQL，
   // 可手动设置：DATABASE_URL=postgresql://user:pass@host:5432/nexus
   writeFileSync(be, content)
-  warn('请在 backend/.env 填入你自己的 AI_API_KEY（OpenRouter 等），否则无法对话。')
+  warn('首次使用请运行  nexus setup  完成 AI 配置（或 nexusai setup）。')
 }
 
 // npm 的全局可执行文件目录。Node.js 安装时该目录会加入系统 PATH，
@@ -240,13 +240,14 @@ async function main() {
   await linkCli(dir)
   console.log(`\n${c.green}${c.bold}安装完成！${c.reset}`)
   console.log(`项目目录：${dir}`)
-  console.log('接下来：')
-  console.log('  1. 编辑 backend/.env，填入你的 AI_API_KEY（OpenRouter: https://openrouter.ai/keys）')
-  console.log('  2. 终端对话：nexusai chat')
+  console.log('接下来（按顺序）：')
+  console.log('  1. 配置 AI（第一次必做）：nexus setup     → 按提示粘贴你的 Key 或中继地址')
+  console.log('  2. 终端聊天：nexus            （一敲直接进对话）')
   console.log('  3. 桌面应用：nexusai')
-  console.log('  4. 浏览器访问：nexusai serve  → http://localhost:5173')
+  console.log('  4. 浏览器访问：nexus serve    → http://localhost:5173')
+  console.log('  5. 查看当前配置：nexus config')
   console.log('')
-  console.log(`${c.yellow}如果提示「无法将 nexusai 项识别为 cmdlet」：${c.reset}`)
+  console.log(`${c.yellow}如果提示「无法将 nexus 项识别为 cmdlet」：${c.reset}`)
   console.log('  · 关掉这个终端窗口，重新开一个再试（PATH 需要新窗口才生效）；')
   console.log('  · 或者直接用下面两条等效命令（不用全局命令也能跑）：')
   console.log(`      cd "${dir}"`)
