@@ -58,8 +58,29 @@ const cfg = { ...parseEnvFile(ENV_FILE), ...loadUserConfig() }
 
 let API_BASE = (cfg.AI_API_BASE || '').replace(/\/+$/, '')
 let API_KEY = cfg.AI_API_KEY || ''
-let MODEL = cfg.AI_MODEL || 'z-ai/glm-5.2:free'
-let VISION_MODEL = cfg.AI_VISION_MODEL || MODEL
+// 默认模型只是“起点”。OpenRouter 的免费模型会随时上下架（如 z-ai/glm-5.2:free 已下架），
+// 因此实际请求时会由 completeWithFallback 在候选链里自动挑一个当前可用的并记住，
+// 用户无需手动改模型名。
+let MODEL = cfg.AI_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free'
+let VISION_MODEL = cfg.AI_VISION_MODEL || 'dots-studio/dots-3-note-preview:free'
+
+// 本次实际成功使用的模型（用于 config 展示与写回配置）
+let ACTIVE_MODEL = null
+
+// 静态候选（优先后备）；即使全部失效，也会从线上免费列表里动态补齐。
+const TEXT_MODEL_CANDIDATES = [
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'qwen/qwen3.8-27b:free',
+  'google/gemma-4-31b-it:free',
+  'thinkingmachines/inkling:free',
+  'inclusionai/ling-3.0-flash-sante:free',
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+]
+const VISION_MODEL_CANDIDATES = [
+  'dots-studio/dots-3-note-preview:free',
+  'google/gemma-4-31b-it:free',
+  'qwen/qwen3.8-27b:free',
+]
 
 // 文档里的示例占位域名：不是真实服务器。命中时直接给出可执行指引，
 // 避免用户看到 “Hostname/IP does not match certificate's altnames” 这类看不懂的报错。
@@ -134,10 +155,10 @@ function explainError(e) {
 const SYSTEM_PROMPT =
   '你是 NEXUS AI，一个本地运行的多模态助手，擅长回答各类问题、写代码、分析图片。回答简洁友好，中文为主。'
 
-function requestCompletions(messages) {
+function requestCompletions(messages, modelOverride) {
   if (!API_BASE) return Promise.reject(new Error('未配置 AI 服务地址（请运行 ' + CMD + ' setup）'))
   const useVision = messages.some((m) => Array.isArray(m.content))
-  const model = useVision ? VISION_MODEL : MODEL
+  const model = modelOverride || (useVision ? VISION_MODEL : MODEL)
   const body = JSON.stringify({ model, messages, stream: false })
   const url = new URL(API_BASE + '/chat/completions')
   const lib = url.protocol === 'https:' ? https : http
@@ -172,6 +193,99 @@ function requestCompletions(messages) {
     req.write(body)
     req.end()
   })
+}
+
+/** 简单 GET JSON（用于拉取 OpenRouter 模型列表，无需鉴权）。 */
+function httpsGetJson(url) {
+  const u = new URL(url)
+  const lib = u.protocol === 'https:' ? https : http
+  return new Promise((resolve, reject) => {
+    const req = lib.get(
+      u,
+      { headers: { 'HTTP-Referer': 'https://nexus.local', 'X-Title': 'NEXUS AI Local' } },
+      (res) => {
+        let d = ''
+        res.on('data', (c) => (d += c))
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(d))
+          } catch {
+            reject(new Error('模型列表解析失败'))
+          }
+        })
+      }
+    )
+    req.on('error', reject)
+    req.setTimeout(15000, () => req.destroy(new Error('拉取模型列表超时')))
+  })
+}
+
+/** 是否为“模型不可用”类错误：这类错误换个模型重试即可，不是用户的问题。 */
+function isModelError(msg) {
+  return /unavailable for free|not a valid model|no endpoints found|invalid model|does not exist|not available|no allowed providers|deprecated/i.test(
+    msg
+  )
+}
+
+// 线上免费模型列表缓存（一次进程内只拉一次）
+let _freeModelsCache = null
+async function getFreeModelIds(wantImage) {
+  if (!_freeModelsCache) {
+    try {
+      const data = await httpsGetJson('https://openrouter.ai/api/v1/models')
+      _freeModelsCache = data && Array.isArray(data.data) ? data.data : []
+    } catch {
+      _freeModelsCache = []
+    }
+  }
+  return _freeModelsCache
+    .filter(
+      (m) =>
+        m.pricing &&
+        m.pricing.prompt === '0' &&
+        m.pricing.completion === '0' &&
+        !/lyria|whisper|tts|embed|content-safety|guard/i.test(m.id) &&
+        (!wantImage || (m.architecture && (m.architecture.input_modalities || []).includes('image')))
+    )
+    .map((m) => m.id)
+}
+
+/**
+ * 依次尝试候选模型，返回第一个成功的回复，并把可用模型记到用户配置里。
+ * 遇到“模型下架/不可用”的错误自动换下一个；遇到网络/鉴权错误则直接抛出（换模型也没用）。
+ */
+async function completeWithFallback(messages) {
+  const wantImage = messages.some((m) => Array.isArray(m.content))
+  const current = wantImage ? VISION_MODEL : MODEL
+  const chain = []
+  const push = (id) => {
+    if (id && !chain.includes(id)) chain.push(id)
+  }
+  push(current)
+  for (const id of wantImage ? VISION_MODEL_CANDIDATES : TEXT_MODEL_CANDIDATES) push(id)
+  try {
+    for (const id of await getFreeModelIds(wantImage)) push(id)
+  } catch {}
+  let lastErr
+  for (const id of chain) {
+    try {
+      const reply = await requestCompletions(messages, id)
+      ACTIVE_MODEL = id
+      if (id !== current) {
+        console.log(`（原模型 ${current} 已不可用，已自动切换为 ${id}）`)
+        saveUserConfig(wantImage ? { AI_VISION_MODEL: id } : { AI_MODEL: id })
+      }
+      return reply
+    } catch (e) {
+      const m = String((e && e.message) || e)
+      if (isModelError(m)) {
+        lastErr = e
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr || new Error('暂时没有可用的免费模型，请稍后重试。')
 }
 
 function mimeFromPath(p) {
@@ -242,7 +356,7 @@ async function chatMode() {
       const um = await buildUserMessage(cmd)
       messages.push(um)
       process.stdout.write('NEXUS> ')
-      const reply = await requestCompletions(messages)
+      const reply = await completeWithFallback(messages)
       messages.push({ role: 'assistant', content: reply })
       console.log(reply + '\n')
     } catch (e) {
@@ -451,17 +565,24 @@ async function setupModeInner() {
   if (!key) return console.log('已取消（没有输入 Key）。')
   API_BASE = 'https://openrouter.ai/api/v1'
   API_KEY = key
-  saveUserConfig({ AI_API_BASE: API_BASE, AI_API_KEY: key, AI_MODEL: MODEL })
   upsertEnvKeys({ AI_API_BASE: API_BASE, AI_API_KEY: key })
   process.stdout.write('\n正在验证 Key 是否可用… ')
+  let passed = false
   try {
-    await requestCompletions([{ role: 'user', content: '你好' }])
+    await completeWithFallback([{ role: 'user', content: '你好' }])
     console.log('✅ 通过')
+    passed = true
   } catch (e) {
     console.log('⚠️ 没通过')
     console.log('   ' + explainError(e))
-    console.log('   （不一定是 Key 错，也可能是模型名或网络问题）')
+    console.log('   （不一定是 Key 错，也可能是网络问题）')
   }
+  // 把“本次真正跑通的模型”写进配置，避免下次又撞上已下架的模型
+  saveUserConfig({
+    AI_API_BASE: API_BASE,
+    AI_API_KEY: key,
+    ...(passed && ACTIVE_MODEL ? { AI_MODEL: ACTIVE_MODEL } : {}),
+  })
   console.log('\n✅ 配置完成！现在直接敲 ' + CMD + ' 就能聊天了。')
   console.log('   配置已保存在：' + CONFIG_FILE + '（含你的 Key，请勿外传）')
 }
@@ -471,7 +592,7 @@ function configMode() {
   console.log('NEXUS AI 当前配置')
   console.log('  服务地址 : ' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '  ← 示例占位地址，无效' : ''))
   console.log('  API Key  : ' + mask(API_KEY))
-  console.log('  模型     : ' + MODEL)
+  console.log('  模型     : ' + (ACTIVE_MODEL || MODEL))
   console.log('  版本     : ' + VERSION + '（' + gitShortRev() + '）')
   console.log('  中继地址 : ' + (relayBase() || '（无）'))
   console.log('  登录状态 : ' + (creds.token ? '已登录 ' + (creds.email || '') : '未登录'))
