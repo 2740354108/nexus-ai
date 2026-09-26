@@ -61,6 +61,8 @@ export async function streamChatCompletion(opts: {
   messages: ChatApiMessage[];
   tools?: ChatTool[];
   executeTool?: (call: ToolCall) => Promise<string>;
+  /** 附加系统提示（如联网检索到的资料），会注入到 system 消息中 */
+  system?: string;
   handlers: StreamHandlers;
 }): Promise<void> {
   const { baseUrl, apiKey, model, mode, messages, handlers } = opts;
@@ -79,7 +81,15 @@ export async function streamChatCompletion(opts: {
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const finalMessages =
       mode === "code"
-        ? [{ role: "system", content: CODE_SYSTEM_PROMPT }, ...working]
+        ? [
+            {
+              role: "system",
+              content: CODE_SYSTEM_PROMPT + (opts.system ? "\n" + opts.system : ""),
+            },
+            ...working,
+          ]
+        : opts.system
+        ? [{ role: "system", content: opts.system }, ...working]
         : working;
 
     const body: Record<string, unknown> = {

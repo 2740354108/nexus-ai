@@ -15,11 +15,17 @@ backend/web/
 *.tcb
 *.tcb.bak
 .env.tcb.bak
+# 但保留示例文件，方便开源用户参考配置
+!.env.example
 
 # Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# 运行时生成的数据（用户上传图片、生图缓存等，切勿提交）
+backend/data/
+data/
 
 # OS / editor
 .DS_Store
@@ -32,4 +38,12 @@ pnpm-debug.log*
 .codebuddy
 .genie
 
+# 会话 / 登录态（含微信登录凭证，切勿提交）
+*.session.json
+.weixin-session.json
+*.session.*
+
 *.bundle
+
+# 临时微信登录二维码（运行时生成）
+weixin-qr*.png

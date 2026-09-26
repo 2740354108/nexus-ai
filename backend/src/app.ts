@@ -15,8 +15,12 @@ import { aiRouter } from './modules/ai'
 import { imageRouter } from './modules/image'
 import { agnesRouter } from './modules/agnes'
 import { authRouter } from './modules/auth'
+import { relayRouter } from './modules/relay'
 import { historiesRouter } from './modules/histories'
+import { conversationsRouter } from './modules/conversations'
 import { mcpRouter } from './modules/mcp'
+import { billingRouter } from './modules/billing'
+import { configRouter } from './modules/config'
 // ============================================
 // Add your domain module imports here
 // ============================================
@@ -70,10 +74,17 @@ export const createApp = (): Application => {
 
   // 账号系统与我的空间（自托管 JWT，TCB publish key 不可用时兜底）
   app.use(`${env.API_PREFIX}/auth`, authRouter)
+  app.use(`${env.API_PREFIX}/relay`, relayRouter)
   app.use(`${env.API_PREFIX}/histories`, historiesRouter)
+  app.use(`${env.API_PREFIX}/conversations`, conversationsRouter)
 
   // MCP 转发网关：把 /api/mcp 转发到本地运行的 nexus-mcp 服务器
   app.use(env.API_PREFIX, mcpRouter)
+
+  // 商业化：套餐 / 订阅 / 订单 / 用量
+  app.use(`${env.API_PREFIX}/billing`, billingRouter)
+  // 云端用户配置（多租户隔离）
+  app.use(`${env.API_PREFIX}/config`, configRouter)
 
   // ============================================
   // Add your domain module routes here

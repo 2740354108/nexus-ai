@@ -12,6 +12,7 @@ import {
   KeyRound,
   ChevronRight,
   Workflow,
+  Crown,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { isOpenRouter, useSettings } from "@/lib/settings";
@@ -22,6 +23,7 @@ import ImageStudio from "@/components/landing/ImageStudio";
 import AgnesStudio from "@/components/landing/AgnesStudio";
 import WorkflowStudio from "@/components/landing/WorkflowStudio";
 import SpacePage from "@/pages/SpacePage";
+import Pricing from "./Pricing";
 
 type MainTab = "chat" | "create" | "workflow" | "me";
 type CreateTab = "image" | "video" | "music" | "agnes";
@@ -49,6 +51,7 @@ const MobileApp = () => {
   const { settings } = useSettings();
   const [tab, setTab] = useState<MainTab>("chat");
   const [createTab, setCreateTab] = useState<CreateTab>("image");
+  const [showBilling, setShowBilling] = useState(false);
 
   return (
     <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[#0a0a12] text-foreground relative border-x border-white/5">
@@ -135,6 +138,23 @@ const MobileApp = () => {
               <ChevronRight className="h-4 w-4 text-white/30" />
             </Link>
 
+            {/* 会员与订阅 */}
+            <button
+              onClick={() => setShowBilling(true)}
+              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 transition-colors hover:border-cyan-500/40"
+            >
+              <span className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400/20 to-violet-500/20">
+                  <Crown className="h-4 w-4 text-cyan-300" />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-white">会员与订阅</span>
+                  <span className="block text-[11px] text-muted-foreground">查看套餐、用量与升级</span>
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-white/30" />
+            </button>
+
             {user ? (
               <SpacePage />
             ) : (
@@ -146,6 +166,7 @@ const MobileApp = () => {
             )}
           </div>
         )}
+        {showBilling && <Pricing onClose={() => setShowBilling(false)} />}
       </main>
 
       {/* 底部 Tab 导航 */}

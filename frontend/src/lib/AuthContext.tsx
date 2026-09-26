@@ -82,40 +82,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY)
     const savedUser = localStorage.getItem(USER_KEY)
-    if (savedToken) {
-      setToken(savedToken)
-      if (savedUser) {
-        try {
-          setUser(JSON.parse(savedUser))
-        } catch {
-          setUser(null)
-        }
-      }
-      api('/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
-        .then((data) => {
-          const profile: UserProfile = {
-            uid: data.uid,
-            email: data.email,
-            name: data.name || '',
-            avatar_url: data.avatar_url || '',
-            provider: data.phoneVerified ? 'phone' : 'email',
-            emailVerified: !!data.emailVerified,
-            phone: data.phone || '',
-            phoneVerified: !!data.phoneVerified,
-          }
-          setUser(profile)
-          localStorage.setItem(USER_KEY, JSON.stringify(profile))
-        })
-        .catch(() => {
-          setUser(null)
-          setToken('')
-          localStorage.removeItem(TOKEN_KEY)
-          localStorage.removeItem(USER_KEY)
-        })
-        .finally(() => setLoading(false))
-    } else {
+    if (!savedToken) {
       setLoading(false)
+      return
     }
+    // 先用本地保存的 token 立即恢复登录态，避免后端短暂不可用时被误判为未登录
+    setToken(savedToken)
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch {
+        setUser(null)
+      }
+    }
+    setLoading(false)
+
+    // 后台静默校验：仅当 token 确实无效（401）才清除；网络/服务抖动一律保留本地登录态
+    fetch(`/api/auth/me`, { headers: { Authorization: `Bearer ${savedToken}` } })
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            setUser(null)
+            setToken('')
+            localStorage.removeItem(TOKEN_KEY)
+            localStorage.removeItem(USER_KEY)
+          }
+          return null
+        }
+        return res.json()
+      })
+      .then((data) => {
+        if (!data) return
+        const profile: UserProfile = {
+          uid: data.uid,
+          email: data.email,
+          name: data.name || '',
+          avatar_url: data.avatar_url || '',
+          provider: data.phoneVerified ? 'phone' : 'email',
+          emailVerified: !!data.emailVerified,
+          phone: data.phone || '',
+          phoneVerified: !!data.phoneVerified,
+        }
+        setUser(profile)
+        localStorage.setItem(USER_KEY, JSON.stringify(profile))
+      })
+      .catch(() => {
+        /* 网络或服务暂时不可用：保留本地登录态，下次再校验 */
+      })
   }, [])
 
   const persist = (data: any) => {

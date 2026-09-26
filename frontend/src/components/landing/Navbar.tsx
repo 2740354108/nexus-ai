@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useScroll, useSpring } from "framer-motion";
 import { Menu, X, Zap } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import LoginModal from "./LoginModal";
+import { useLoginModal } from "@/components/LoginModalProvider";
 
 const NAV_LINKS = [
   { label: "能力", href: "#features" },
@@ -18,7 +18,7 @@ const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const { user, signOut } = useAuth();
-  const [loginOpen, setLoginOpen] = useState(false);
+  const { openLogin } = useLoginModal();
 
   // 顶部阅读进度条
   const { scrollYProgress } = useScroll();
@@ -111,10 +111,10 @@ const Navbar = () => {
               </div>
             ) : (
               <button
-                onClick={() => setLoginOpen(true)}
+                onClick={() => openLogin()}
                 className="hidden rounded-xl border border-white/15 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/10 md:inline-flex"
               >
-                登录
+                登录 / 注册
               </button>
             )}
             <a
@@ -188,7 +188,7 @@ const Navbar = () => {
               <button
                 onClick={() => {
                   setOpen(false);
-                  setLoginOpen(true);
+                  openLogin();
                 }}
                 className="block w-full rounded-lg px-4 py-3 text-left text-sm font-medium text-white transition-colors hover:bg-white/5"
               >
@@ -205,8 +205,6 @@ const Navbar = () => {
           </motion.nav>
         )}
       </AnimatePresence>
-
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </motion.header>
   );
 };

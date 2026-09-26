@@ -40,6 +40,24 @@ export default function LoginModal({
 
   const googleClientId = getGoogleClientId();
   const googleBtnRef = useRef<HTMLDivElement>(null);
+  // 公开中继模式下，登录/注册即代表领取每日免费额度，给用户一个明确说明
+  const [relayMode, setRelayMode] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch("/api/relay/status")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setRelayMode(!!d.relay);
+      })
+      .catch(() => {
+        /* 忽略：非中继模式仅少一行提示 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !googleClientId || !googleBtnRef.current) return
@@ -298,10 +316,16 @@ export default function LoginModal({
 
         {(step === "form" || step === "phoneVerify") && (
           <>
-            <h2 className="text-xl font-bold text-white">登录 NEXUS LAB</h2>
+            <h2 className="text-xl font-bold text-white">登录 / 注册 NEXUS LAB</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               登录后可在「我的空间」保存你的生成作品
             </p>
+
+            {relayMode && (
+              <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-2.5 text-xs text-cyan-200">
+                登录 / 注册后即可领取每日免费额度；终端同样可用 <span className="font-mono">nexusai login</span> 登录。
+              </div>
+            )}
 
             {err && (
               <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">

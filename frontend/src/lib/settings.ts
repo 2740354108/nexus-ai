@@ -19,6 +19,8 @@ export type AppSettings = {
   openrouterKey: string;
   /** 对话使用的模型 id（本地服务填本地模型名，如 qwen2.5:7b） */
   chatModel: string;
+  /** 深度思考模式使用的推理模型（留空则用默认 deepseek-r1） */
+  chatModelThink: string;
   /** Pollinations 令牌（可选，不填也能画图，填了额度更高） */
   pollinationsToken: string;
   /** 本地 ComfyUI 地址（可选，用于画图 / 视频） */
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chatApiBase: OPENROUTER_BASE,
   openrouterKey: "",
   chatModel: "z-ai/glm-5.2",
+  chatModelThink: "",
   pollinationsToken: "",
   comfyUrl: "",
   comfyCheckpoint: "",

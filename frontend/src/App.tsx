@@ -16,6 +16,7 @@ import AppSettings from "./pages/AppSettings";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "@/lib/AuthContext";
+import { LoginModalProvider } from "@/components/LoginModalProvider";
 
 /**
  * Configure TanStack Query client with optimized defaults
@@ -59,6 +60,7 @@ function App() {
         <Toaster />
         <BrowserRouter>
           <AuthProvider>
+            <LoginModalProvider>
             <AnimatedRoutes>
               <Route path="/" data-genie-title="Home Page" data-genie-key="Home" element={<PageTransition transition="slide-up"><NativeEntry /></PageTransition>} />
               {/* 独立 AI 体验页 */}
@@ -79,6 +81,7 @@ function App() {
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" data-genie-key="NotFound" data-genie-title="Not Found" element={<PageTransition transition="fade"><NotFound /></PageTransition>} />
             </AnimatedRoutes>
+            </LoginModalProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

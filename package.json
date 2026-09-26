@@ -1,0 +1,55 @@
+{
+  "name": "nexus-ai",
+  "version": "1.0.0",
+  "description": "NEXUS AI 本地入口：终端对话 + 桌面应用程序",
+  "type": "module",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexus-ai/nexus-ai.git"
+  },
+  "homepage": "https://github.com/nexus-ai/nexus-ai#readme",
+  "bugs": {
+    "url": "https://github.com/nexus-ai/nexus-ai/issues"
+  },
+  "author": "NEXUS AI Contributors",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "chatbot",
+    "llm",
+    "nexus",
+    "cli",
+    "desktop"
+  ],
+  "bin": {
+    "nexusai": "cli/nexusai.mjs",
+    "nexus-ai": "installer/installer.mjs"
+  },
+  "main": "electron/main.cjs",
+  "scripts": {
+    "nexusai": "node cli/nexusai.mjs",
+    "chat": "node cli/nexusai.mjs chat",
+    "serve": "node cli/nexusai.mjs serve",
+    "app": "electron .",
+    "pack:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "ai.nexus.local",
+    "productName": "NEXUS AI",
+    "files": [
+      "cli",
+      "backend",
+      "frontend",
+      "electron",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist-electron"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

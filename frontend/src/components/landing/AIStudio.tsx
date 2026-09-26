@@ -15,21 +15,50 @@ import {
   ImagePlus,
   X,
   Trash2,
+  Globe,
 } from "lucide-react";
 import CodeRunner from "./CodeRunner";
 import { isNativeApp, isOpenRouter, loadSettings, type AppSettings } from "@/lib/settings";
+import { useLoginModal } from "@/components/LoginModalProvider";
 import { streamChatCompletion, type ChatApiMessage, MODEL_ROUTER_TOOL, executeModelRouterTool, buildRouterHint } from "@/lib/providers/chatClient";
 import { compressImageFile } from "@/lib/utils/image";
-import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
+import { useCloudChat, type StoredMessage } from "@/lib/chatSessions";
 
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-  /** 随消息发送的图片（data URL），用于展示；发送时仅最后一条携带 */
-  image?: string;
-};
+type ChatMessage = StoredMessage;
 
 const LANGS = ["TypeScript", "React", "Python", "Java", "Go", "SQL", "HTML/CSS"];
+
+/** 调本站公开搜索接口，返回拼好的可注入 system 文本（失败返回空串） */
+async function fetchWebContext(query: string): Promise<string> {
+  try {
+    const r = await fetch("/api/ai/web-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    const d = await r.json();
+    return d.context || "";
+  } catch {
+    return "";
+  }
+}
+
+/** 取最后一条用户消息的纯文本，作为搜索查询词 */
+function lastUserText(msgs: ChatApiMessage[]): string {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role !== "user") continue;
+    const c = msgs[i].content;
+    if (typeof c === "string") return c.slice(0, 200);
+    if (Array.isArray(c))
+      return c
+        .filter((p) => p.type === "text")
+        .map((p) => p.text)
+        .join(" ")
+        .trim()
+        .slice(0, 200);
+  }
+  return "";
+}
 
 const SUGGESTIONS = [
   "你们 NEXUS LAB 能做哪些事？",
@@ -197,7 +226,11 @@ const MarkdownView = ({ content }: { content: string }) => {
 /* ---------- 主组件 ---------- */
 
 const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boolean; defaultMode?: "chat" | "code" }) => {
+  const { token, user, sessions, activeId, messages, setMessages, newSession, switchTo, remove } = useCloudChat();
+  const { openLogin } = useLoginModal();
   const [tab, setTab] = useState<"chat" | "code">(defaultMode);
+  const [think, setThink] = useState(false);
+  const [web, setWeb] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   // 自带密钥 / 自建服务设置（原生环境下直连用户填的接口，不经中间服务器）
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -205,11 +238,8 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // 本地对话记录：加载完成后才开始自动保存
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  // 对话状态由 useCloudChat 接管（登录存云端、未登录存本机）
 
-  // 对话状态
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -246,21 +276,6 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, sending]);
 
-  // 启动时恢复本机保存的对话记录
-  useEffect(() => {
-    loadChatHistory().then((h) => {
-      if (h.length) setMessages(h);
-      setHistoryLoaded(true);
-    });
-  }, []);
-
-  // 对话变化时写入本机（防抖；流式输出过程中不写，结束再落盘）
-  useEffect(() => {
-    if (!historyLoaded || sending) return;
-    const id = setTimeout(() => void saveChatHistory(messages), 400);
-    return () => clearTimeout(id);
-  }, [messages, sending, historyLoaded]);
-
   /** 流式调用 AI：消费 SSE，逐字回调 token */
   const streamAI = (
     mode: "chat" | "code",
@@ -279,16 +294,21 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
       // 原生应用：用用户自己的密钥，直连云端或用户自己部署的服务，不经过任何中间服务器
       if (isNativeApp()) {
         const s = appSettings ?? (await loadSettings());
-        // 若预设备用模型，注入系统提示让主模型自动转接
-        const hint = buildRouterHint({ endpoint: s.routerEndpoint, model: s.routerModel });
-        const routedMsgs = hint ? [{ role: "system", content: hint }, ...msgs] : msgs;
-        await streamChatCompletion({
-          baseUrl: s.chatApiBase,
-          apiKey: s.openrouterKey,
-          model: s.chatModel,
-          mode,
-          messages: routedMsgs,
-          tools: [MODEL_ROUTER_TOOL],
+    // 若预设备用模型，注入系统提示让主模型自动转接
+    const hint = buildRouterHint({ endpoint: s.routerEndpoint, model: s.routerModel });
+    let extraSystem: string | undefined = hint || undefined;
+    if (web) {
+      const ctx = await fetchWebContext(lastUserText(msgs));
+      if (ctx) extraSystem = extraSystem ? extraSystem + "\n" + ctx : ctx;
+    }
+    await streamChatCompletion({
+      baseUrl: s.chatApiBase,
+      apiKey: s.openrouterKey,
+      model: think ? s.chatModelThink || "deepseek/deepseek-r1:free" : s.chatModel,
+      mode,
+      messages: msgs,
+      system: extraSystem,
+      tools: [MODEL_ROUTER_TOOL],
           executeTool: (call) =>
             executeModelRouterTool(call, {
               endpoint: s.routerEndpoint,
@@ -304,8 +324,11 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
       try {
         resp = await fetch("/api/ai/chat/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, messages: msgs }),
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ mode: think ? "think" : mode, web, messages: msgs }),
         });
       } catch (e: any) {
         onError("网络异常，请稍后重试");
@@ -319,6 +342,8 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
         } catch {
           /* ignore */
         }
+        // 未登录 / 试用次数用尽：唤起全站唯一的登录弹窗，注册后自动解锁每日额度
+        if (resp.status === 401) openLogin();
         onError(msg);
         return;
       }
@@ -431,8 +456,7 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   };
 
   const handleClearHistory = async () => {
-    setMessages([]);
-    await clearChatHistory();
+    await remove(activeId || "");
   };
 
   const generateCode = async () => {
@@ -534,7 +558,48 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
               <Code2 className="h-4 w-4" />
               代码生成
             </button>
+            <button
+              onClick={() => setThink((t) => !t)}
+              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-all ${
+                think
+                  ? "bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/20"
+                  : "text-muted-foreground hover:text-white"
+              }`}
+            >
+              <Sparkles className="h-4 w-4" />
+              深度思考
+            </button>
           </div>
+          )}
+
+          {/* 嵌入式模式没有顶部标签栏，这里补常驻开关，所有入口都看得到 */}
+          {embedded && (
+            <div className="mb-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setThink((t) => !t)}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                  think
+                    ? "bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/20"
+                    : "border border-white/10 text-muted-foreground hover:text-white"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                深度思考 {think ? "· 开" : "· 关"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeb((w) => !w)}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                  web
+                    ? "bg-gradient-to-r from-cyan-400 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
+                    : "border border-white/10 text-muted-foreground hover:text-white"
+                }`}
+              >
+                <Globe className="h-3.5 w-3.5" />
+                联网 {web ? "· 开" : "· 关"}
+              </button>
+            </div>
           )}
 
           <AnimatePresence mode="wait">
@@ -547,22 +612,40 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
                 transition={{ duration: 0.25 }}
                 className={embedded ? "" : "mt-6"}
               >
-                {/* 对话记录工具条 */}
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">
-                    {messages.length > 0
-                      ? `本机已保存 ${Math.ceil(messages.length / 2)} 轮对话`
-                      : "对话记录仅保存在这台设备上"}
-                  </span>
-                  {messages.length > 0 && (
-                    <button
-                      onClick={handleClearHistory}
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-red-300"
+                {/* 会话管理：登录存云端（按账号隔离）、未登录存本机 */}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <select
+                      value={activeId || ""}
+                      onChange={(e) => e.target.value && switchTo(e.target.value)}
+                      className="max-w-[45%] truncate rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80 outline-none"
                     >
-                      <Trash2 className="h-3 w-3" />
-                      清空记录
+                      <option value="">{messages.length ? "当前对话" : "新对话"}</option>
+                      {sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.title || "未命名对话"}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={newSession}
+                      className="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/70 transition-colors hover:border-cyan-400/40 hover:text-white"
+                    >
+                      ＋新对话
                     </button>
-                  )}
+                    {activeId && (
+                      <button
+                        onClick={() => activeId && remove(activeId)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-red-300"
+                        title="删除当前对话"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {user ? "已存到你的账号" : "仅存本机"}
+                  </span>
                 </div>
 
                 {/* 消息列表 */}

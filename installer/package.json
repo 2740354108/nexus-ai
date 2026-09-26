@@ -1,0 +1,24 @@
+{
+  "name": "nexus-ai",
+  "version": "1.0.0",
+  "description": "NEXUS AI 一键安装器：自动安装 Node/pnpm/PostgreSQL 并部署本地 AI 应用",
+  "type": "module",
+  "bin": {
+    "nexus-ai": "installer.mjs"
+  },
+  "files": [
+    "installer.mjs"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai",
+    "chatbot",
+    "llm",
+    "nexus",
+    "installer",
+    "cli"
+  ],
+  "license": "MIT"
+}
