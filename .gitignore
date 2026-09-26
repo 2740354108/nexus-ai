@@ -26,6 +26,9 @@ pnpm-debug.log*
 # 运行时生成的数据（用户上传图片、生图缓存等，切勿提交）
 backend/data/
 data/
+# 内嵌数据库（本地部署自动生成，含账号与聊天记录，切勿提交）
+nexus-data/
+backend/nexus-data/
 
 # OS / editor
 .DS_Store

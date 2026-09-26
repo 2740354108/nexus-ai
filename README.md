@@ -1,7 +1,7 @@
 # NEXUS AI
 
 一个可本地运行的多模态 AI 助手：网页界面 + 桌面应用 + 终端对话 + 微信/QQ/Telegram 机器人。
-对话、识图、生图、音乐、视频全部走公网模型接口（OpenRouter、MiniMax 等），数据可存在本地 PostgreSQL，也可直接连云端数据库实现互通。
+对话、识图、生图、音乐、视频全部走公网模型接口（OpenRouter、MiniMax 等），数据默认存在本地内嵌数据库（零安装），也可直连外部 PostgreSQL / 云端数据库实现互通。
 
 > 本项目开源免费。模型调用需要你自己的 API Key（OpenRouter 等），与部署方式无关。
 
@@ -11,13 +11,13 @@
 - **桌面应用** `nexusai`：GUI 窗口，自动拉起后端与前端
 - **网页界面** `nexusai serve`：浏览器访问 `http://localhost:5173`
 - **机器人接入**：微信、QQ、Telegram、Discord、企业微信（按需开启）
-- **本地存储 / 云端互通**：默认存本地 PostgreSQL；也可直连云端数据库，两边数据一致
+- **本地存储 / 云端互通**：默认存本地内嵌数据库（零安装）；也可直连外部 PostgreSQL / 云端数据库，两边数据一致
 
 ## 架构
 
 ```
 ┌────────────┐   ┌────────────┐   ┌────────────────┐
-│  网页/桌面  │   │  后端 API   │   │ PostgreSQL    │
+│  网页/桌面  │   │  后端 API   │   │ 内嵌数据库/外部PG │
 │ (React)    │──▶│ (Express)  │──▶│ 本地 或 云端    │
 └────────────┘   └─────┬──────┘   └────────────────┘
                        │
@@ -41,7 +41,7 @@
 npx github:2740354108/nexus-ai
 ```
 
-安装器会自动：检查/安装 pnpm、安装 PostgreSQL、从你的 GitHub 克隆本项目、安装依赖、生成配置、注册 `nexusai` 全局命令。
+安装器会自动：检查/安装 pnpm、从你的 GitHub 克隆本项目、安装依赖（含内嵌数据库，无需你装任何数据库软件）、生成配置、注册 `nexusai` 全局命令。
 
 可选：指定安装目录
 
@@ -76,14 +76,11 @@ pnpm -C backend install     # 后端
 pnpm -C frontend install    # 前端
 pnpm -C nexus-bot install   # 机器人（可选）
 
-# 3. 准备数据库（PostgreSQL）
-createdb nexus
-
-# 4. 配置
+# 3. 配置（默认已用内嵌数据库，无需建库）
 cp backend/.env.example backend/.env
-# 编辑 backend/.env，至少填入 AI_API_KEY
+# 编辑 backend/.env，至少填入 AI_API_KEY（不填也能用每日免费额度）
 
-# 5. 启动
+# 4. 启动
 pnpm nexusai chat      # 终端对话
 pnpm nexusai           # 桌面应用
 pnpm nexusai serve     # 网页（http://localhost:5173）
@@ -95,8 +92,9 @@ pnpm nexusai serve     # 网页（http://localhost:5173）
 |------|------|
 | `AI_API_KEY` | **必填**。OpenRouter 等模型密钥，决定能否对话 |
 | `AI_MODEL` / `AI_VISION_MODEL` | 对话 / 识图模型，默认免费模型 |
-| `DB_MODE` | `local`（默认，直连 PostgreSQL）或 `cloud` |
-| `DATABASE_URL` | PostgreSQL 连接串，例如 `postgresql://postgres:密码@localhost:5432/nexus` |
+| `DB_MODE` | `local`（默认，内嵌数据库，零安装）或 `cloud`（云端 TCB） |
+| `NEXUS_DATA_DIR` | 内嵌数据库存放目录，默认 `./nexus-data` |
+| `DATABASE_URL` | 可选。填 `postgresql://...` 则改用外部 PostgreSQL（与云端共用数据时用） |
 
 AI 密钥获取：https://openrouter.ai/keys
 

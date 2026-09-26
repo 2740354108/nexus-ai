@@ -78,36 +78,8 @@ async function ensurePnpm() {
   await run('npm', ['install', '-g', 'pnpm'])
 }
 
-async function ensurePostgres() {
-  if (has('psql') || has('pg_ctl') || has('postgres')) {
-    ok('PostgreSQL 已安装')
-    return true
-  }
-  if (platform() === 'win32') {
-    warn('未检测到 PostgreSQL，尝试用 winget 安装（需要管理员权限）…')
-    try {
-      await run('winget', [
-        'install',
-        '-e',
-        '--id',
-        'PostgreSQL.PostgreSQL',
-        '--accept-package-agreements',
-        '--accept-source-agreements',
-      ])
-      ok('PostgreSQL 安装命令已执行，请按提示完成')
-      return false
-    } catch {
-      warn('winget 安装失败，请手动安装 PostgreSQL：https://www.postgresql.org/download/windows/')
-      return false
-    }
-  } else if (platform() === 'darwin') {
-    warn('macOS 请执行：brew install postgresql')
-    return false
-  } else {
-    warn('Linux 请执行：sudo apt install postgresql（或对应发行版命令）')
-    return false
-  }
-}
+// 本地部署使用内嵌数据库（PGlite，零安装），不再强制安装 PostgreSQL。
+// 如需连接外部 PostgreSQL，可在 backend/.env 设置 DATABASE_URL=postgresql://...
 
 async function installDeps(dir) {
   step('安装依赖（backend / frontend / nexus-bot）…')
@@ -133,23 +105,13 @@ async function setupEnv(dir) {
   }
   let content = existsSync(be) ? readFileSync(be, 'utf-8') : ''
   if (!/^\s*DB_MODE=/m.test(content)) {
-    content += '\n# 本地部署默认：直连本地 PostgreSQL\nDB_MODE=local\n'
-  }
-  if (!/^\s*DATABASE_URL=/m.test(content)) {
     content +=
-      'DATABASE_URL=postgresql://postgres:你的密码@localhost:5432/nexus\n'
+      '\n# 本地部署默认：内嵌数据库（PGlite，零安装，数据存在 ./nexus-data）\nDB_MODE=local\n'
   }
+  // 本地默认使用内嵌数据库，无需外部 PostgreSQL；如需连接外部 PostgreSQL，
+  // 可手动设置：DATABASE_URL=postgresql://user:pass@host:5432/nexus
   writeFileSync(be, content)
   warn('请在 backend/.env 填入你自己的 AI_API_KEY（OpenRouter 等），否则无法对话。')
-}
-
-async function ensureDb() {
-  try {
-    await run('createdb', ['nexus'], { silent: true })
-    ok('已创建数据库 nexus')
-  } catch {
-    warn('数据库 nexus 可能已存在，或 PostgreSQL 未启动/未加入 PATH。可手动执行：createdb nexus')
-  }
 }
 
 async function linkCli(dir) {
@@ -185,11 +147,9 @@ async function main() {
     process.exit(1)
   }
   await ensurePnpm()
-  const pgOk = await ensurePostgres()
   const dir = await prepareApp()
   await installDeps(dir)
   await setupEnv(dir)
-  if (pgOk) await ensureDb()
   await linkCli(dir)
   console.log(`\n${c.green}${c.bold}安装完成！${c.reset}`)
   console.log('接下来：')
