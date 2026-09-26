@@ -6,11 +6,11 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/2740354108/nexus-ai.git"
+    "url": "https://github.com/2740354108/nexus-ai-apk.git"
   },
-  "homepage": "https://github.com/2740354108/nexus-ai#readme",
+  "homepage": "https://github.com/2740354108/nexus-ai-apk#readme",
   "bugs": {
-    "url": "https://github.com/2740354108/nexus-ai/issues"
+    "url": "https://github.com/2740354108/nexus-ai-apk/issues"
   },
   "author": "NEXUS AI Contributors",
   "license": "MIT",

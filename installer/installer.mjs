@@ -11,7 +11,7 @@ import { platform } from 'os'
 
 // 安装器要克隆的仓库地址（作为兜底；用 npx github: 时 cwd 已经是仓库，不会再克隆）。
 // 发布前可改成你自己的 GitHub 地址。
-const REPO = process.env.NEXUS_REPO || 'https://github.com/2740354108/nexus-ai.git'
+const REPO = process.env.NEXUS_REPO || 'https://github.com/2740354108/nexus-ai-apk.git'
 // 安装到哪个目录（npx nexus-ai 我的目录）
 const TARGET = process.argv[2] || 'nexus-ai'
 
