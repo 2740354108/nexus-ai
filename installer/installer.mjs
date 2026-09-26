@@ -61,7 +61,25 @@ async function prepareApp() {
   }
   const dest = resolve(process.cwd(), TARGET)
   if (existsSync(dest)) {
-    warn(`目录 ${TARGET} 已存在，跳过克隆`)
+    // 目录已存在：若是 git 仓库，尝试拉取最新代码，确保用上修复后的版本
+    if (existsSync(join(dest, '.git'))) {
+      step(`目录 ${TARGET} 已存在，尝试更新到最新代码…`)
+      try {
+        await run('git', ['-C', dest, 'pull', '--ff-only'], { silent: true })
+        ok('已更新到最新代码')
+      } catch {
+        // 浅克隆无法直接 fast-forward，改为 fetch 后重置到远端 HEAD
+        try {
+          await run('git', ['-C', dest, 'fetch', '--depth', '1', 'origin', 'main'], { silent: true })
+          await run('git', ['-C', dest, 'reset', '--hard', 'FETCH_HEAD'], { silent: true })
+          ok('已更新到最新代码')
+        } catch {
+          warn('更新失败（可能有本地改动），继续使用现有代码')
+        }
+      }
+    } else {
+      warn(`目录 ${TARGET} 已存在且非 git 仓库，跳过克隆，直接使用现有代码`)
+    }
     return dest
   }
   step(`从 GitHub 克隆 NEXUS AI → ${TARGET}`)
