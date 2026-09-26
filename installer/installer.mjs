@@ -154,19 +154,27 @@ function npmGlobalBinDir() {
   }
 }
 
-// 直接写入 nexusai 启动脚本（不依赖 pnpm 的 PATH 配置，最稳妥）
+// 直接写入启动脚本（不依赖 pnpm 的 PATH 配置，最稳妥）。
+// 同时生成 nexus 与 nexusai 两个入口；nexus 默认进终端聊天，nexusai 保持原行为。
 function writeShims(cliPath) {
   const binDir = npmGlobalBinDir()
   if (!binDir) return false
   try {
     mkdirSync(binDir, { recursive: true })
-    if (platform() === 'win32') {
-      writeFileSync(join(binDir, 'nexusai.cmd'), `@echo off\r\nnode "${cliPath}" %*\r\n`)
-      writeFileSync(join(binDir, 'nexusai.ps1'), `node "${cliPath}" $args\n`)
-    } else {
-      const f = join(binDir, 'nexusai')
-      writeFileSync(f, `#!/bin/sh\nexec node "${cliPath}" "$@"\n`)
-      chmodSync(f, 0o755)
+    const names = platform() === 'win32'
+      ? (n) => [`${n}.cmd`, `${n}.ps1`]
+      : (n) => [n]
+    for (const name of ['nexus', 'nexusai']) {
+      // nexus 短名默认进终端聊天，通过 --nexus 标记告知 CLI
+      const marker = name === 'nexus' ? '--nexus ' : ''
+      if (platform() === 'win32') {
+        writeFileSync(join(binDir, `${name}.cmd`), `@echo off\r\nnode "${cliPath}" ${marker}%*\r\n`)
+        writeFileSync(join(binDir, `${name}.ps1`), `node "${cliPath}" ${marker}$args\n`)
+      } else {
+        const f = join(binDir, name)
+        writeFileSync(f, `#!/bin/sh\nexec node "${cliPath}" ${marker}"$@"\n`)
+        chmodSync(f, 0o755)
+      }
     }
     return true
   } catch {
@@ -181,8 +189,8 @@ async function linkCli(dir) {
   // 方式一：pnpm link --global（需要 pnpm 全局目录在 PATH 中）
   try {
     await run('pnpm', ['link', '--global'], { cwd: dir, silent: true })
-    if (has('nexusai')) {
-      ok('已注册全局命令 nexusai')
+    if (has('nexus') || has('nexusai')) {
+      ok('已注册全局命令 nexus / nexusai')
       return
     }
   } catch {
@@ -190,13 +198,13 @@ async function linkCli(dir) {
   }
 
   // 方式二：写入 npm 全局可执行目录（Node 安装时已加入 PATH，最可靠）
-  if (writeShims(cliPath) && has('nexusai')) {
-    ok('已注册全局命令 nexusai（写入 npm 全局目录）')
+  if (writeShims(cliPath) && (has('nexus') || has('nexusai'))) {
+    ok('已注册全局命令 nexus / nexusai（写入 npm 全局目录）')
     return
   }
 
   // 两种都失败：给出不依赖全局命令的启动方式，保证照样能用
-  warn('未能自动注册全局命令 nexusai，可直接用下面任一方式启动（效果完全一样）：')
+  warn('未能自动注册全局命令，可直接用下面任一方式启动（效果完全一样）：')
   warn(`  cd ${dir}`)
   warn('  pnpm nexusai chat      # 终端对话')
   warn('  pnpm nexusai serve     # 浏览器打开 http://localhost:5173')

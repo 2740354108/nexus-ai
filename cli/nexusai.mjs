@@ -13,6 +13,17 @@ const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 
+// 识别本次是被当作 `nexus`（短名、默认进终端聊天）还是 `nexusai`（原命令）调用。
+// nexus 的快捷入口会在参数最前面插入 --nexus 标记。
+let isNexus = false
+const nexusFlagIdx = process.argv.indexOf('--nexus')
+if (nexusFlagIdx >= 0) {
+  process.argv.splice(nexusFlagIdx, 1)
+  isNexus = true
+}
+// 命令名：用于提示文字，确保用户看到的启动命令与实际一致。
+const CMD = isNexus ? 'nexus' : 'nexusai'
+
 // 读取 backend/.env 中的 AI 配置（手动解析，零依赖）
 function loadEnv() {
   const path = join(ROOT, 'backend', '.env')
@@ -132,8 +143,8 @@ async function chatMode() {
     const rb = relayBase()
     if (rb) {
       console.log('⚠️ 你连的是 NEXUS 中继，需要先注册登录才能使用（每天免费额度）。')
-      console.log('   注册：nexusai register 你的邮箱 密码')
-      console.log('   登录：nexusai login 你的邮箱 密码')
+      console.log(`   注册：${CMD} register 你的邮箱 密码`)
+      console.log(`   登录：${CMD} login 你的邮箱 密码`)
     } else {
       console.log('⚠️ 未配置 AI_API_KEY，请在 backend/.env 填入 OpenRouter 等密钥后重试。')
     }
@@ -216,7 +227,7 @@ async function registerMode(email, password) {
     creds.email = email
     saveCreds(creds)
     console.log('✅ 注册成功并已登录，令牌已保存到 ' + CRED_FILE)
-    console.log('   现在运行 nexusai chat 即可对话（每日免费额度）。')
+    console.log(`   现在运行 ${CMD} chat 即可对话（每日免费额度）。`)
   } else {
     console.log('❌ 注册失败：' + (json.error || 'HTTP ' + status))
     process.exit(1)
@@ -231,7 +242,7 @@ async function loginMode(email, password) {
     creds.token = json.token
     creds.email = email
     saveCreds(creds)
-    console.log('✅ 登录成功，令牌已保存。运行 nexusai chat 开始对话。')
+    console.log(`✅ 登录成功，令牌已保存。运行 ${CMD} chat 开始对话。`)
   } else {
     console.log('❌ 登录失败：' + (json.error || 'HTTP ' + status))
     process.exit(1)
@@ -240,7 +251,7 @@ async function loginMode(email, password) {
 
 async function meMode() {
   if (!creds.token) {
-    console.log('ℹ️ 尚未登录。运行 nexusai register 或 nexusai login。')
+    console.log(`ℹ️ 尚未登录。运行 ${CMD} register 或 ${CMD} login。`)
     return
   }
   const rb = relayBase()
@@ -263,7 +274,7 @@ async function meMode() {
     console.log(`已登录：${json.email}`)
     console.log(`每日额度：${json.dailyLimit} 次　匿名试用/IP：${json.trialPerIp} 次`)
   } else {
-    console.log('令牌已失效，请重新登录（nexusai login）。')
+    console.log(`令牌已失效，请重新登录（${CMD} login）。`)
   }
 }
 
@@ -318,21 +329,23 @@ function help() {
   console.log(`NEXUS AI 本地入口
 
 用法：
-  nexusai               启动桌面应用（GUI 窗口）
-  nexusai chat         终端对话模式（想问什么直接敲）
-  nexusai register      注册中继账号（nexusai register 邮箱 密码）
-  nexusai login         登录中继账号（nexusai login 邮箱 密码）
-  nexusai me            查看当前登录与每日额度
-  nexusai serve        启动本地后端 + 前端服务（浏览器访问 http://localhost:5173）
-  nexusai app          同 nexusai，启动桌面应用
-  nexusai help         显示本帮助
+  ${CMD}               启动桌面应用（GUI 窗口）
+  ${CMD} chat         终端对话模式（想问什么直接敲）
+  ${CMD} register      注册中继账号（${CMD} register 邮箱 密码）
+  ${CMD} login         登录中继账号（${CMD} login 邮箱 密码）
+  ${CMD} me            查看当前登录与每日额度
+  ${CMD} serve        启动本地后端 + 前端服务（浏览器访问 http://localhost:5173）
+  ${CMD} app          同 ${CMD}，启动桌面应用
+  ${CMD} help         显示本帮助
 
 说明：
   - 连的是 NEXUS 中继时，需先 register/login 领取每日免费额度；
-  - 用的是自己的 AI Key（backend/.env 的 AI_API_KEY）则无需登录，直接 chat。`)
+  - 用的是自己的 AI Key（backend/.env 的 AI_API_KEY）则无需登录，直接 chat；
+  - 短命令 ${CMD === 'nexus' ? 'nexus' : 'nexus'}（不带参数）会直接进入终端对话。`)
 }
 
-const cmd = process.argv[2] || 'app'
+// 不带子命令时：nexus 默认进终端聊天，nexusai 默认启动桌面应用
+const cmd = process.argv[2] || (isNexus ? 'chat' : 'app')
 switch (cmd) {
   case 'chat':
     chatMode()
