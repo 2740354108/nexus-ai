@@ -126,9 +126,16 @@ async function postToNexus(messages: any[]): Promise<any> {
       }
     }
   }
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  // 连不上后端是最常见的一类问题，单独给出可照做的指引，
+  // 免得和"上游模型抖动"混在一起，用户只能看到一句含糊的失败。
+  const unreachable =
+    /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|timed? ?out|aborted/i.test(msg);
   return {
     ok: false,
-    error: `调用 NEXUS 失败：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    error: unreachable
+      ? `连不上 NEXUS 后端（${NEXUS_API_BASE}）。请先在本机启动后端：nexusai serve`
+      : `调用 NEXUS 失败：${msg}`,
   };
 }
 

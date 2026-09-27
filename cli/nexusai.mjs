@@ -201,7 +201,11 @@ function explainError(e) {
     )
   if (/超时|timeout|ETIMEDOUT/i.test(m))
     return `请求超时：${API_BASE}\n   解决：检查网络，或运行 ${CMD} setup 换一个 AI 服务地址。`
-  if (/401|403|Unauthorized|Incorrect API key|No auth|invalid.*key/i.test(m))
+  if (
+    /401|403|Unauthorized|Incorrect API key|No auth|Missing Authentication|Authentication header|invalid.*key/i.test(
+      m
+    )
+  )
     return (
       `AI 密钥无效或未配置。\n` +
       `   解决：运行 ${CMD} setup 填入你自己的 Key（https://openrouter.ai/keys 可免费申请）。`
@@ -623,29 +627,37 @@ async function setupModeInner() {
     return
   }
 
-  const key = await prompt('请粘贴你的 AI Key（sk-or- 开头）：')
+  const key = (await prompt('请粘贴你的 AI Key（sk-or- 开头）：')).trim()
   if (!key) return console.log('已取消（没有输入 Key）。')
+  // 先做格式体检：明显不是有效 Key 时直接拦下，绝不写进任何配置。
+  // 之前是"先落盘再验证"，一个错字就会写进项目配置，导致网页端、微信/QQ 机器人
+  // 全部报"服务不可用"，排查方向被完全带偏。
+  if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(key)) {
+    console.log('⚠️ 这看起来不是有效的 Key（应以 sk- 开头、长度 20 位以上）。')
+    console.log('   已取消，未写入任何配置。请到 https://openrouter.ai/keys 复制完整 Key 后重试。')
+    return
+  }
+  console.log('\n正在验证 Key 是否真的可用…')
   API_BASE = 'https://openrouter.ai/api/v1'
   API_KEY = key
-  upsertEnvKeys({ AI_API_BASE: API_BASE, AI_API_KEY: key })
-  process.stdout.write('\n正在验证 Key 是否可用… ')
-  let passed = false
   try {
     await completeWithFallback([{ role: 'user', content: '你好' }])
-    console.log('✅ 通过')
-    passed = true
   } catch (e) {
-    console.log('⚠️ 没通过')
-    console.log('   ' + explainError(e))
-    console.log('   （不一定是 Key 错，也可能是网络问题）')
+    console.log('❌ 验证没通过：' + explainError(e))
+    console.log('   为避免把无效配置写进项目（网页端和机器人会跟着一起坏），本次未保存。')
+    console.log('   请确认 Key 复制完整、网络能访问 openrouter.ai 后，重新运行 ' + CMD + ' setup。')
+    return
   }
-  // 把“本次真正跑通的模型”写进配置，避免下次又撞上已下架的模型
+  console.log('✅ 通过')
+  // 验证通过才落盘：CLI 读用户级配置，网页端/机器人读项目 backend/.env，两边都要写
   saveUserConfig({
     AI_API_BASE: API_BASE,
     AI_API_KEY: key,
-    ...(passed && ACTIVE_MODEL ? { AI_MODEL: ACTIVE_MODEL } : {}),
+    ...(ACTIVE_MODEL ? { AI_MODEL: ACTIVE_MODEL } : {}),
   })
+  upsertEnvKeys({ AI_API_BASE: API_BASE, AI_API_KEY: key })
   console.log('\n✅ 配置完成！现在直接敲 ' + CMD + ' 就能聊天了。')
+  console.log('   已同步写入网页端 / 微信机器人的配置（backend/.env），无需手动改文件。')
   console.log('   配置已保存在：' + CONFIG_FILE + '（含你的 Key，请勿外传）')
 }
 

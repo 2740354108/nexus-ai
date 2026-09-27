@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI 助手",
   "app_slug": "nexus-ai",
-  "version_description": "启动自动更新，根治本机代码过期问题",
+  "version_description": "修复自动换模型提示反复刷屏",
   "preview_type": "pc"
 }

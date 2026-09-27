@@ -60,38 +60,211 @@ function sanitizeContentParts(raw: unknown): ContentPart[] {
   return parts
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * 线上模型清单缓存。
+ * OpenRouter 的免费模型会随时上下架（如 z-ai/glm-5.2:free 已撤下），
+ * 因此候选链不能只依赖 .env 里写死的名字，否则会一直去请求已经不存在的模型，
+ * 白白浪费一轮请求、还会把"服务不可用"甩给用户。这里定时拉取真实清单：
+ *  - all      ：当前存在的全部模型 id（用于剔除已下架的配置项）
+ *  - freeText ：当前免费且可用于对话的模型
+ *  - freeVision：当前免费且支持图片输入的模型
+ */
+interface LiveModels {
+  at: number
+  all: Set<string>
+  freeText: string[]
+  freeVision: string[]
+}
+let liveModelsCache: LiveModels | null = null
+const LIVE_CACHE_MS = 10 * 60 * 1000
+/** 非对话类模型（语音/向量/审核等），不该出现在对话候选链里 */
+const NON_CHAT_MODEL = /(^|[/_-])(tts|whisper|lyria|embed|embedding|rerank|moderation|guard|content-safety|image|vision-encoder)([/_-]|$)/i
+
+function isOpenRouterBase(): boolean {
+  return /openrouter\.ai/i.test(env.AI_API_BASE || '')
+}
+
+async function getLiveModels(): Promise<LiveModels> {
+  const empty: LiveModels = { at: Date.now(), all: new Set(), freeText: [], freeVision: [] }
+  // 只有官方地址才有这份公开清单；自建中继/其他网关保持原有行为
+  if (!isOpenRouterBase()) return empty
+  if (liveModelsCache && Date.now() - liveModelsCache.at < LIVE_CACHE_MS) return liveModelsCache
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/models', {
+      signal: AbortSignal.timeout(10_000),
+    })
+    const data: any = await res.json().catch(() => null)
+    const list: any[] = Array.isArray(data?.data) ? data.data : []
+    const all = new Set<string>(list.map((m) => String(m.id)))
+    const free = list.filter(
+      (m) =>
+        m?.pricing &&
+        m.pricing.prompt === '0' &&
+        m.pricing.completion === '0' &&
+        !NON_CHAT_MODEL.test(String(m.id))
+    )
+    const freeText = free.map((m) => String(m.id))
+    const freeVision = free
+      .filter((m) => (m?.architecture?.input_modalities || []).includes('image'))
+      .map((m) => String(m.id))
+    liveModelsCache = { at: Date.now(), all, freeText, freeVision }
+    if (all.size) logger.info({ total: all.size, free: freeText.length }, '已获取线上模型清单')
+    return liveModelsCache
+  } catch (e: any) {
+    // 拿不到清单也要能对话：缓存空结果，10 分钟后再试，不阻塞用户请求
+    logger.warn({ err: e?.message }, '获取线上模型清单失败，本次仅使用配置内的模型')
+    liveModelsCache = empty
+    return empty
+  }
+}
+
+/** 去掉重复与空项 */
+function uniq(list: string[]): string[] {
+  return [...new Set(list.map((s) => (s || '').trim()).filter(Boolean))]
+}
+
+/**
+ * 组装候选链：配置里的模型在前（自动剔除已下架的），再用线上免费模型补齐。
+ * 关键点：只剔除"确认已不存在"的模型，不会误删用户刻意配置的付费模型。
+ */
+async function buildChain(configuredRaw: string[], wantImage: boolean): Promise<string[]> {
+  const configured = uniq(configuredRaw)
+  const live = await getLiveModels()
+  const out: string[] = []
+  for (const m of configured) {
+    if (live.all.size && !live.all.has(m)) {
+      logger.warn({ model: m }, '配置的模型已不在线上清单中（可能已下架），已跳过')
+      continue
+    }
+    out.push(m)
+  }
+  const extras = wantImage ? live.freeVision : live.freeText
+  for (const m of extras) if (!out.includes(m)) out.push(m)
+  // 补齐后的链过长时收敛一下，避免用户等待过久
+  return live.all.size ? out.slice(0, 8) : out
+}
+
 /** 文本模型候选链：前一个被限流/出错时自动切换下一个 */
-function getModelChain(): string[] {
-  const primary = env.AI_MODEL.trim()
-  const rest = (env.AI_MODEL_FALLBACKS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return [primary, ...rest.filter((m) => m !== primary)]
+async function getModelChain(): Promise<string[]> {
+  const rest = (env.AI_MODEL_FALLBACKS || '').split(',')
+  return buildChain([env.AI_MODEL, ...rest], false)
 }
 
 /** 视觉（识图）模型候选链 */
-function getVisionModelChain(): string[] {
-  const primary = (env.AI_VISION_MODEL || '').trim()
-  const rest = (env.AI_VISION_FALLBACKS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const chain = [primary, ...rest.filter((m) => m !== primary)].filter(Boolean)
+async function getVisionModelChain(): Promise<string[]> {
+  const rest = (env.AI_VISION_FALLBACKS || '').split(',')
+  const chain = await buildChain([env.AI_VISION_MODEL || '', ...rest], true)
   // 兜底：若未配置任何视觉模型，退回文本链（不会报错，只是可能看不懂图）
   return chain.length ? chain : getModelChain()
 }
 
 /** 深度思考模型候选链：推理模型，先思考再答 */
-function getThinkModelChain(): string[] {
-  const primary = (env.AI_MODEL_THINK || '').trim()
-  const rest = (env.AI_MODEL_FALLBACKS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const chain = [primary, ...rest.filter((m) => m !== primary)].filter(Boolean)
+async function getThinkModelChain(): Promise<string[]> {
+  const rest = (env.AI_MODEL_FALLBACKS || '').split(',')
+  const chain = await buildChain([env.AI_MODEL_THINK || '', ...rest], false)
   return chain.length ? chain : getModelChain()
 }
+
+/**
+ * 失败原因归类。以前所有错误都统一报"AI 服务暂时不可用"，
+ * 导致 Key 无效、额度用尽、上游抖动看起来一模一样，用户根本无从下手。
+ */
+type FailKind = 'auth' | 'quota' | 'rate' | 'transient' | 'other'
+interface AttemptFail {
+  model: string
+  status?: number
+  message: string
+  kind: FailKind
+}
+
+function classifyFail(status: number | undefined, message: string): FailKind {
+  const s = message || ''
+  if (
+    status === 401 ||
+    status === 403 ||
+    /missing authentication|invalid api key|no auth credentials|unauthorized|incorrect api key|key is invalid|invalid_key/i.test(
+      s
+    )
+  ) {
+    return 'auth'
+  }
+  if (/free-models-per-day|per-day|daily limit|quota|额度|insufficient|payment required|credit/i.test(s)) {
+    return 'quota'
+  }
+  if (status === 429 || /rate limit|too many requests|\b429\b/i.test(s)) return 'rate'
+  if (
+    /provider returned error|provider error|upstream|timed? ?out|abort|ECONNRESET|ENOTFOUND|EAI_AGAIN|fetch failed|socket hang up|overloaded|unavailable|\b50[234]\b|internal server error|model not found|\b404\b/i.test(
+      s
+    )
+  ) {
+    return 'transient'
+  }
+  return 'other'
+}
+
+function toAttemptFail(model: string, err: any): AttemptFail {
+  const status: number | undefined = err?.statusCode
+  const message = String(err?.message || err || '失败')
+  return { model, status, message, kind: classifyFail(status, message) }
+}
+
+/**
+ * 全部模型都失败后，给用户一句能照着做的说明。
+ * 优先级：Key 无效 > 额度用尽 > 限流高峰 > 上游抖动 > 兜底。
+ */
+function summarizeFailures(fails: AttemptFail[]): { status: number; error: string } {
+  const has = (k: FailKind) => fails.some((f) => f.kind === k)
+  if (has('auth')) {
+    return {
+      status: 503,
+      error:
+        'AI 密钥无效或未配置：请在 backend/.env 填写有效的 AI_API_KEY（OpenRouter），保存后重启后端',
+    }
+  }
+  if (has('quota')) {
+    return {
+      status: 429,
+      error:
+        'AI 免费额度已用完（免费模型每天 50 次）。给模型账户充值可提升到 1000 次/天，或等到明天自动重置。',
+    }
+  }
+  if (has('rate')) {
+    return {
+      status: 503,
+      error: '当前 AI 免费模型都在限流高峰（用的人太多），请稍等一两分钟再试',
+    }
+  }
+  if (has('transient')) {
+    return { status: 503, error: '上游 AI 服务暂时抖动（已自动切换并重试），请再发一次' }
+  }
+  return { status: 502, error: 'AI 服务暂时不可用，请稍后重试' }
+}
+
+/** 是否为"整体性瞬时故障"：所有失败都是上游抖动/网络问题时，值得把整条链再试一遍 */
+function allTransient(fails: AttemptFail[]): boolean {
+  return fails.length > 0 && fails.every((f) => f.kind === 'transient')
+}
+
+/**
+ * 启动自检：Key 缺失或明显是占位/测试值（如 "sk-or-fake-key"）时立刻在日志里喊出来。
+ * 否则表现是"所有模型都失败 → 服务不可用"，排查方向会被完全带偏。
+ */
+function warnIfKeyLooksInvalid(): void {
+  const k = env.AI_API_KEY || ''
+  if (!k.trim()) {
+    logger.error('未配置 AI_API_KEY：所有 AI 对话都会失败，请在 backend/.env 中填写')
+    return
+  }
+  if (k.trim().length < 20 || /fake|placeholder|your[-_]?key|test|xxx|demo/i.test(k)) {
+    logger.error(
+      { length: k.trim().length },
+      'AI_API_KEY 看起来不是有效密钥（过短或含占位词），AI 对话将全部失败，请检查 backend/.env'
+    )
+  }
+}
+warnIfKeyLooksInvalid()
 
 /** 对外暴露的模型档位（前端渲染选择器用） */
 aiRouter.get('/models', (_req: Request, res: Response) => {
@@ -357,42 +530,35 @@ aiRouter.post('/chat', async (req: Request, res: Response) => {
   const temperature = mode === 'code' ? 0.3 : 0.7
   const maxTokens = mode === 'code' ? 4096 : 2048
 
-  const chain = mode === 'think' ? getThinkModelChain() : getModelChain()
-  const failures: string[] = []
+  const chain = await (mode === 'think' ? getThinkModelChain() : getModelChain())
+  const t0 = Date.now()
+  let fails: AttemptFail[] = []
 
-  for (const model of chain) {
-    try {
-      const content = await callUpstream(model, systemPrompt, userMessages, temperature, maxTokens)
-      if (cuid) void recordUsage(cuid, 'chat', 1)
-      return res.json({ success: true, content, model })
-    } catch (err: any) {
-      const status = (err as any).statusCode
-      const brief = `${model} → ${err?.message || '失败'}`
-      failures.push(brief)
-      // 429 限流 / 5xx 服务故障 → 换下一个模型；其他错误也继续尝试
-      logger.warn({ model, status }, 'AI 模型调用失败，尝试下一个')
+  // 两轮尝试：第一轮逐个模型试；若失败全是上游抖动，隔一会儿把整条链再走一遍。
+  // 免费模型本身就容易偶发失败，第二遍能挡掉相当一部分"突然报错"的体验。
+  for (let pass = 0; pass < 2; pass++) {
+    fails = []
+    for (const model of chain) {
+      try {
+        const content = await callUpstream(model, systemPrompt, userMessages, temperature, maxTokens)
+        if (cuid) void recordUsage(cuid, 'chat', 1)
+        return res.json({ success: true, content, model })
+      } catch (err: any) {
+        const f = toAttemptFail(model, err)
+        fails.push(f)
+        // 429 限流 / 5xx 服务故障 → 换下一个模型；其他错误也继续尝试
+        logger.warn({ model, status: f.status, kind: f.kind }, 'AI 模型调用失败，尝试下一个')
+      }
     }
+    const canRetry = allTransient(fails) && Date.now() - t0 < 20_000
+    if (!canRetry) break
+    logger.warn('全部为上游瞬时故障，整条模型链再试一遍')
+    await sleep(800)
   }
 
-  logger.error({ failures }, 'AI 全部模型均失败')
-  const quotaHit = failures.some((f) =>
-    /free-models-per-day|per-day|daily|quota exceeded|额度/i.test(f)
-  )
-  const rateHit = failures.some((f) => /429|rate limit|limit/i.test(f))
-  // 免费额度用尽：明确告知，避免被误解成"网络抖动、重试就好"
-  if (quotaHit) {
-    return res.status(429).json({
-      success: false,
-      error:
-        'AI 免费额度已用完（免费模型每天 50 次）。给模型账户充值可提升到 1000 次/天，或等到明天自动重置。',
-    })
-  }
-  return res.status(502).json({
-    success: false,
-    error: rateHit
-      ? '当前 AI 模型都在限流高峰（用的人太多），请稍等一两分钟再试'
-      : 'AI 服务暂时不可用，请稍后重试',
-  })
+  logger.error({ failures: fails }, 'AI 全部模型均失败')
+  const summary = summarizeFailures(fails)
+  return res.status(summary.status).json({ success: false, error: summary.error })
 })
 
 /**
@@ -463,8 +629,8 @@ aiRouter.post('/chat/stream', async (req: Request, res: Response) => {
   const temperature = mode === 'code' ? 0.3 : 0.7
   const maxTokens = mode === 'code' ? 4096 : 2048
 
-  const chain = mode === 'think' ? getThinkModelChain() : getModelChain()
-  const failures: string[] = []
+  const chain = await (mode === 'think' ? getThinkModelChain() : getModelChain())
+  const failures: AttemptFail[] = []
   let started = false
 
   // 客户端断开时中止上游请求（仅当响应尚未正常结束），避免无谓的流式拉取
@@ -506,19 +672,14 @@ aiRouter.post('/chat/stream', async (req: Request, res: Response) => {
         finish()
         break
       }
-      const brief = `${model} → ${err?.message || '失败'}`
-      failures.push(brief)
-      logger.warn({ model, status: err?.statusCode }, 'AI 流式模型调用失败，尝试下一个')
+      const f = toAttemptFail(model, err)
+      failures.push(f)
+      logger.warn({ model, status: f.status, kind: f.kind }, 'AI 流式模型调用失败，尝试下一个')
     }
   }
 
   if (!started) {
-    const isAllRateLimit = failures.every((f) => f.includes('429'))
-    send('error', {
-      error: isAllRateLimit
-        ? '当前 AI 免费模型都在限流高峰（用的人太多），请稍等一两分钟再试'
-        : 'AI 服务暂时不可用，请稍后重试',
-    })
+    send('error', { error: summarizeFailures(failures).error })
     finish()
   }
 })
@@ -575,7 +736,7 @@ aiRouter.post('/v1/chat/completions', async (req: Request, res: Response) => {
 
   const userMessages = sanitizeMessages(reqMessages)
   const hasImage = messagesContainImage(userMessages)
-  const chain = hasImage ? getVisionModelChain() : getModelChain()
+  const chain = await (hasImage ? getVisionModelChain() : getModelChain())
   if (hasImage && !sysMsg) {
     systemPrompt =
       systemPrompt +
@@ -586,45 +747,38 @@ aiRouter.post('/v1/chat/completions', async (req: Request, res: Response) => {
     const ctx = buildWebContext(await webSearch(lastUserText(userMessages)))
     if (ctx) systemPrompt += ctx
   }
-  const failures: string[] = []
-
   // 非流式：直接返回 OpenAI 格式
   if (!stream) {
-    for (const model of chain) {
-      try {
-        const content = await callUpstream(model, systemPrompt, userMessages, 0.7, 4000)
-        return res.json({
-          id: `chatcmpl-nexus-${Date.now()}`,
-          object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
-          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-        })
-      } catch (err: any) {
-        failures.push(`${model} → ${err?.message || '失败'}`)
-        logger.warn({ model }, 'OpenAI 兼容接口调用失败，尝试下一个')
+    const t0 = Date.now()
+    let fails: AttemptFail[] = []
+    // 与 /chat 一致：全部为瞬时故障时，整条链再走一遍（微信/QQ 机器人走的就是这条路径）
+    for (let pass = 0; pass < 2; pass++) {
+      fails = []
+      for (const model of chain) {
+        try {
+          const content = await callUpstream(model, systemPrompt, userMessages, 0.7, 4000)
+          return res.json({
+            id: `chatcmpl-nexus-${Date.now()}`,
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model,
+            choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          })
+        } catch (err: any) {
+          const f = toAttemptFail(model, err)
+          fails.push(f)
+          logger.warn({ model, status: f.status, kind: f.kind }, 'OpenAI 兼容接口调用失败，尝试下一个')
+        }
       }
+      const canRetry = allTransient(fails) && Date.now() - t0 < 20_000
+      if (!canRetry) break
+      logger.warn('全部为上游瞬时故障，整条模型链再试一遍')
+      await sleep(800)
     }
-    const quotaHit = failures.some((f) =>
-      /free-models-per-day|per-day|daily|quota exceeded|额度/i.test(f)
-    )
-    const rateHit = failures.some((f) => /429|rate limit/i.test(f))
-    if (quotaHit) {
-      return res.status(429).json({
-        error: {
-          message:
-            'AI 免费额度已用完（免费模型每天 50 次）。给模型账户充值可提升到 1000 次/天，或等到明天自动重置。',
-        },
-      })
-    }
-    return res.status(502).json({
-      error: {
-        message: rateHit
-          ? '当前 AI 模型都在限流高峰（用的人太多），请稍等一两分钟再试'
-          : 'AI 服务暂时不可用，请稍后重试',
-      },
-    })
+    logger.error({ failures: fails }, 'OpenAI 兼容接口：AI 全部模型均失败')
+    const summary = summarizeFailures(fails)
+    return res.status(summary.status).json({ error: { message: summary.error } })
   }
 
   // 流式：返回 OpenAI SSE（delta 格式），OpenClaw 等网关原生支持
@@ -641,6 +795,7 @@ aiRouter.post('/v1/chat/completions', async (req: Request, res: Response) => {
 
   let started = false
   let usedModel = chain[0]
+  const failures: AttemptFail[] = []
   for (const model of chain) {
     try {
       usedModel = model
@@ -671,12 +826,14 @@ aiRouter.post('/v1/chat/completions', async (req: Request, res: Response) => {
         res.end()
         break
       }
-      failures.push(`${model} → ${err?.message || '失败'}`)
-      logger.warn({ model }, 'OpenAI 兼容流式调用失败，尝试下一个')
+      const f = toAttemptFail(model, err)
+      failures.push(f)
+      logger.warn({ model, status: f.status, kind: f.kind }, 'OpenAI 兼容流式调用失败，尝试下一个')
     }
   }
   if (!started) {
-    res.write(`data: ${JSON.stringify({ error: { message: 'AI 服务暂时不可用' } })}\n\n`)
+    const summary = summarizeFailures(failures)
+    res.write(`data: ${JSON.stringify({ error: { message: summary.error } })}\n\n`)
     res.end()
   }
 })
