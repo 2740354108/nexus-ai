@@ -98,13 +98,13 @@ async function respond(
   if (imgInfo) {
     try {
       const dataUrl = await downloadImage(imgInfo);
-      reply = await callNexus(from, text, dataUrl);
+      reply = await callNexus(from, text, dataUrl, "weixin");
     } catch (err) {
       console.error("[weixin] 图片处理失败：", (err as Error).message);
       reply = "（这张图片我暂时下载不下来，可能无法识图，换个图或发文字试试）";
     }
   } else {
-    reply = await callNexus(from, text);
+    reply = await callNexus(from, text, undefined, "weixin");
   }
 
   try {

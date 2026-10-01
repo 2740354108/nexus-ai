@@ -138,7 +138,13 @@ export function buildCompanionContext(m: Memory, sig: Signal): string {
   return lines.join('\n');
 }
 
-/** 只有微信通道才启用阿枢（公众号 wechat_mp 与个人微信 onebot 都算） */
+/**
+ * 只有微信通道才启用阿枢。
+ * 覆盖三条微信链路：
+ *  - weixin     微信 iLink / ClawBot（扫码登录，当前主力通道）
+ *  - onebot     个人微信 / QQ 挂载（NapCat 等）
+ *  - wechat_mp  微信公众号
+ */
 export function isWechat(platform?: string): boolean {
-  return platform === 'wechat_mp' || platform === 'onebot';
+  return platform === 'weixin' || platform === 'wechat_mp' || platform === 'onebot';
 }
