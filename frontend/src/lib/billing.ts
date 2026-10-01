@@ -28,6 +28,7 @@ export interface Plan {
   id: string;
   name: string;
   price_cents: number;
+  price_usd?: number;
   interval: string;
   limits: Record<string, number>;
   features: string[];
@@ -47,15 +48,15 @@ export const getSubscription = () =>
 
 export const getUsage = () => api<{ usage: UsageItem[] }>("/billing/usage").then((d) => d.usage);
 
-export const checkout = (planId: string, channel: "wechat" | "alipay") =>
+export const checkout = (planId: string, channel: "paypal" = "paypal") =>
   api<{
     orderId: string;
     amount: number;
+    amountUsd?: number;
     channel: string;
     qrCode: string;
     payUrl: string;
     mock: boolean;
-    notifyUrl?: string;
     returnUrl?: string;
     free?: boolean;
     planId?: string;

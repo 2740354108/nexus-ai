@@ -2,7 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { query, queryOne } from '../lib/db'
 import { authMiddleware, AuthenticatedRequest } from './auth'
-import { createPayment, verifyPaymentCallback, getPublicBaseUrl, PayChannel } from '../lib/payments'
+import { createPayment, getPublicBaseUrl, PayChannel, cnyCentsToUsd } from '../lib/payments'
 
 export const billingRouter = Router()
 
@@ -148,7 +148,7 @@ export async function listPlans() {
     [],
     'read'
   )
-  return rows
+  return rows.map((r) => ({ ...r, price_usd: cnyCentsToUsd(r.price_cents) }))
 }
 
 /** 当前生效订阅（无则回退免费版） */
@@ -299,7 +299,7 @@ billingRouter.post('/usage/record', authMiddleware, async (req: AuthenticatedReq
 billingRouter.post('/checkout', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const { planId, channel } = req.body || {}
   if (!planId) return res.status(400).json({ error: '请选择套餐' })
-  const ch: PayChannel = channel === 'alipay' ? 'alipay' : 'wechat'
+  const ch: PayChannel = channel === 'paypal' ? 'paypal' : 'paypal'
   const plan = await getPlan(planId)
   if (!plan || !plan.active) return res.status(400).json({ error: '套餐不存在或已下架' })
 
@@ -310,16 +310,14 @@ billingRouter.post('/checkout', authMiddleware, async (req: AuthenticatedRequest
   }
 
   const orderId = crypto.randomUUID()
-  // 自动跟随当前访问的公网域名拼出回调与回跳地址
+  // PayPal.me 无服务端回调，仅拼出付款后回跳站点地址（用户手动返回点「我已支付」）
   const base = getPublicBaseUrl(req)
-  const notifyUrl = base ? `${base}/api/billing/webhook/${ch}` : ''
   const returnUrl = base ? `${base}/` : ''
   const pay = await createPayment({
     channel: ch,
     orderId,
     amountCents: plan.price_cents,
     subject: `NEXUS LAB ${plan.name}`,
-    notifyUrl,
     returnUrl,
   })
   await query(
@@ -332,11 +330,11 @@ billingRouter.post('/checkout', authMiddleware, async (req: AuthenticatedRequest
     success: true,
     orderId,
     amount: plan.price_cents,
+    amountUsd: cnyCentsToUsd(plan.price_cents),
     channel: ch,
     qrCode: pay.qrCode,
     payUrl: pay.payUrl,
     mock: pay.mock,
-    notifyUrl: pay.notifyUrl,
     returnUrl: pay.returnUrl,
   })
 })
@@ -371,38 +369,4 @@ billingRouter.post('/confirm', authMiddleware, async (req: AuthenticatedRequest,
   )
   const sub = await getSubscription(req.user!.uid)
   res.json({ success: true, ...sub })
-})
-
-// 微信支付回调（占位：真实实现需验签后激活）
-billingRouter.post('/webhook/wechat', async (req, res) => {
-  const result = await verifyPaymentCallback('wechat', req.body || {})
-  if (result.success && result.outTradeNo) {
-    const order = await queryOne<{ id: string; user_id: string; plan_id: string; status: string }>(
-      'SELECT id, user_id, plan_id, status FROM orders WHERE out_trade_no = $1',
-      [result.outTradeNo],
-      'read'
-    )
-    if (order && order.status !== 'paid') {
-      await activateSubscription(order.user_id, order.plan_id)
-      await query("UPDATE orders SET status = 'paid', paid_at = now() WHERE id = $1", [order.id], 'write')
-    }
-  }
-  res.json({ success: true })
-})
-
-// 支付宝回调（占位）
-billingRouter.post('/webhook/alipay', async (req, res) => {
-  const result = await verifyPaymentCallback('alipay', req.body || {})
-  if (result.success && result.outTradeNo) {
-    const order = await queryOne<{ id: string; user_id: string; plan_id: string; status: string }>(
-      'SELECT id, user_id, plan_id, status FROM orders WHERE out_trade_no = $1',
-      [result.outTradeNo],
-      'read'
-    )
-    if (order && order.status !== 'paid') {
-      await activateSubscription(order.user_id, order.plan_id)
-      await query("UPDATE orders SET status = 'paid', paid_at = now() WHERE id = $1", [order.id], 'write')
-    }
-  }
-  res.json({ success: true })
 })

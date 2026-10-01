@@ -31,8 +31,7 @@ const FEATURE_LABEL: Record<string, { label: string; icon: typeof MessageSquare 
 /**
  * 会员与订阅页（多租户商业化前端）。
  * - 展示套餐、当前订阅、本月用量
- * - 购买：微信/支付宝下单 → 模拟收银台（沙盒）→ 确认激活
- * 真实支付在接入微信/支付宝商户号后自动替换为真实收款二维码。
+ * - 购买：PayPal.me 个人收款（无营业执照也能用）→ 新标签页打开收款链接 → 回站点点「我已支付」激活
  */
 const Pricing = ({ onClose }: { onClose: () => void }) => {
   const { user } = useAuth();
@@ -41,7 +40,7 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
   const [usage, setUsage] = useState<UsageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [pay, setPay] = useState<{ orderId: string; amount: number; channel: string } | null>(null);
+  const [pay, setPay] = useState<{ orderId: string; amount: number; amountUsd?: number; channel: string } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -64,22 +63,18 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
     else setLoading(false);
   }, [user]);
 
-  const startCheckout = async (plan: Plan, channel: "wechat" | "alipay") => {
+  const startCheckout = async (plan: Plan) => {
     setError("");
     try {
-      const r = await checkout(plan.id, channel);
+      const r = await checkout(plan.id, "paypal");
       if (r.free) {
         setToast("已切换至免费版");
         await load();
         return;
       }
-      // 真实支付：直接跳转支付宝收银台（payUrl 指向支付宝），付完按 returnUrl 跳回
-      if (!r.mock && r.payUrl) {
-        window.location.href = r.payUrl;
-        return;
-      }
-      // 模拟支付：弹出本地模拟收银台
-      setPay({ orderId: r.orderId, amount: r.amount, channel: r.channel });
+      // PayPal.me 收款：新标签页打开收款链接，本页弹出「我已支付」确认框手动激活
+      if (r.payUrl) window.open(r.payUrl, "_blank", "noopener");
+      setPay({ orderId: r.orderId, amount: r.amount, amountUsd: r.amountUsd, channel: r.channel });
     } catch (e: any) {
       setError(e?.message || "下单失败");
     }
@@ -202,11 +197,14 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
                 </div>
                 <div className="text-right">
                   <span className="text-lg font-bold text-white">
-                    ¥{(p.price_cents / 100).toFixed(0)}
+                    ${(p.price_usd ?? p.price_cents / 100 / 7.2).toFixed(2)}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     /{p.interval === "month" ? "月" : "年"}
                   </span>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    约 ¥{(p.price_cents / 100).toFixed(0)}
+                  </p>
                 </div>
               </div>
               <ul className="mt-3 space-y-1">
@@ -223,26 +221,18 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
                 </div>
               ) : p.price_cents <= 0 ? (
                 <button
-                  onClick={() => startCheckout(p, "wechat")}
+                  onClick={() => startCheckout(p)}
                   className="mt-3 w-full rounded-lg border border-white/15 py-2.5 text-xs font-medium text-white transition-colors hover:border-cyan-400/40"
                 >
                   免费开通
                 </button>
               ) : (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => startCheckout(p, "wechat")}
-                    className="rounded-lg bg-gradient-to-r from-cyan-500 to-violet-500 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-                  >
-                    微信购买
-                  </button>
-                  <button
-                    onClick={() => startCheckout(p, "alipay")}
-                    className="rounded-lg border border-white/15 py-2.5 text-xs font-medium text-white transition-colors hover:border-violet-400/40"
-                  >
-                    支付宝购买
-                  </button>
-                </div>
+                <button
+                  onClick={() => startCheckout(p)}
+                  className="mt-3 w-full rounded-lg bg-gradient-to-r from-cyan-500 to-violet-500 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  用 PayPal 购买
+                </button>
               )}
             </div>
           );
@@ -259,16 +249,18 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 text-sm text-white">
-              <CreditCard className="h-4 w-4 text-cyan-300" /> 模拟收银台
+              <CreditCard className="h-4 w-4 text-cyan-300" /> PayPal 收款
             </div>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              沙盒环境暂未接入真实支付。以下为模拟下单，点击「我已支付」即可激活订阅；接入微信／支付宝商户号后，此处会显示真实收款二维码。
+              已在新标签页打开 PayPal 收款页。请完成付款，然后点击下方「我已支付」激活订阅（个人收款无自动回调，需手动确认）。
             </p>
             <div className="mt-3 rounded-xl bg-black/30 p-3 text-center">
-              <p className="text-[11px] text-muted-foreground">订单金额</p>
-              <p className="text-2xl font-bold text-white">¥{(pay.amount / 100).toFixed(2)}</p>
+              <p className="text-[11px] text-muted-foreground">应付金额</p>
+              <p className="text-2xl font-bold text-white">
+                ${(pay.amountUsd ?? pay.amount / 100 / 7.2).toFixed(2)}
+              </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                渠道：{pay.channel === "wechat" ? "微信支付" : "支付宝"}
+                约 ¥{(pay.amount / 100).toFixed(2)} · 渠道：PayPal
               </p>
             </div>
             <button
