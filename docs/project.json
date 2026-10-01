@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "Rewrite full architecture docs in README",
+  "version_description": "合并使用教程进 README，统一为单一文档",
   "preview_type": "pc"
 }

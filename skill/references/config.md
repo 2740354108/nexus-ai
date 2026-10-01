@@ -24,11 +24,22 @@ pnpm -C nexus-bot install      # 机器人，可选
 第一次使用必须配置一次（填自己的 Key，或连接别人搭好的中继）：
 
 ```bash
-nexusai setup      # 向导式，选「用自己的 Key」粘贴即可
+nexusai setup      # 向导式：选「用自己的 Key」→ 挑平台 → 粘贴 Key
 nexusai config     # 随时查看当前配置与登录状态
 ```
 
-免费 Key 申请：<https://openrouter.ai/keys>
+支持的平台（选 1 后挑一家，地址与模型名会自动填好）：
+
+| 平台 | 服务地址 | Key 申请 |
+|------|----------|----------|
+| OpenRouter（推荐） | `https://openrouter.ai/api/v1` | <https://openrouter.ai/keys> |
+| OpenAI | `https://api.openai.com/v1` | <https://platform.openai.com/api-keys> |
+| DeepSeek | `https://api.deepseek.com/v1` | <https://platform.deepseek.com/api_keys> |
+| 月之暗面 Kimi | `https://api.moonshot.cn/v1` | <https://platform.moonshot.cn/console/api-keys> |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | <https://open.bigmodel.cn/usercenter/apikeys> |
+| 通义千问（百炼） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | <https://bailian.console.aliyun.com> |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | <https://cloud.siliconflow.cn/account/ak> |
+| 其它 | 自定义 | 任意 OpenAI 兼容服务 |
 
 配置会写入两处：
 
@@ -41,7 +52,7 @@ nexusai config     # 随时查看当前配置与登录状态
 
 | 配置 | 说明 |
 |------|------|
-| `AI_API_BASE` | AI 服务地址，自带 Key 用 `https://openrouter.ai/api/v1` |
+| `AI_API_BASE` | AI 服务地址，任何 OpenAI 兼容服务均可（OpenRouter / OpenAI / DeepSeek / 智谱…） |
 | `AI_API_KEY` | **必填**，模型密钥 |
 | `AI_MODEL` / `AI_VISION_MODEL` | 对话 / 识图模型 |
 | `DB_MODE` | `local`（默认，内嵌数据库零安装）/ `cloud`（云端） |

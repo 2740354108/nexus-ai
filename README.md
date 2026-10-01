@@ -179,8 +179,9 @@
 3. **Node.js ≥ 18** 和 **pnpm**。
    - 装 Node：https://nodejs.org （选 LTS）
    - 装 pnpm：装好 Node 后，命令行跑 `npm install -g pnpm`
-4. **一个 AI Key**（推荐 OpenRouter，免费申请）。
-   - 去 https://openrouter.ai/keys 注册 → 创建一个 Key（免费额度够日常玩）。
+4. **一个 AI Key**（下面任意一家都支持，用你手头有的那家就行）。
+   - 想省事 → **OpenRouter**：https://openrouter.ai/keys 注册就有免费额度。
+   - 已经有别家 Key → **OpenAI / DeepSeek / 智谱 GLM / 通义千问 / Kimi / 硅基流动** 都能直接用，不必为了跑这个项目专门去注册 OpenRouter。
    - 这就是后面要填的 `AI_API_KEY`。
 5. **可选**：
    - 想跑**高质量本地生图 / 生视频** → 需要一张显卡 + 自己部署 ComfyUI（见「进阶一」）。
@@ -280,8 +281,24 @@ nexusai setup
 
 它会问两种用法，选一个：
 
-- **用法 1（推荐，自带 Key）**：选「用自己的 Key」，把 OpenRouter 的 Key 粘进去。无限流、最稳，Key 只存在本地。
+- **用法 1（推荐，自带 Key）**：选「用自己的 Key」，再挑一家平台（见下表），把该平台的 Key 粘进去。向导会自动带出对应的服务地址和常用模型，并现场验证一次，通过才保存。无限流、最稳，Key 只存在本地。
 - **用法 2（连中继）**：如果知道某个站长部署的中继地址，选这个填进去，可免自己申请 Key（但有每日额度）。自己没部署中继**不要**选这个。
+
+**向导里可选的平台**（地址、模型都由向导自动填好，你只出 Key）：
+
+| 选哪家 | 服务地址 | Key 去哪拿 |
+|--------|----------|-----------|
+| OpenRouter（新手推荐） | `https://openrouter.ai/api/v1` | https://openrouter.ai/keys （有免费额度） |
+| OpenAI 官方 | `https://api.openai.com/v1` | https://platform.openai.com/api-keys |
+| DeepSeek | `https://api.deepseek.com/v1` | https://platform.deepseek.com/api_keys |
+| 月之暗面 Kimi | `https://api.moonshot.cn/v1` | https://platform.moonshot.cn/console/api-keys |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | https://open.bigmodel.cn/usercenter/apikeys |
+| 通义千问（百炼） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | https://bailian.console.aliyun.com |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | https://cloud.siliconflow.cn/account/ak |
+| 其它 | 自己填 | 任何 OpenAI 兼容服务都可以 |
+
+> 换平台时模型名会跟着换（例如 DeepSeek 用 `deepseek-chat`），向导会自动写进配置，不用手改。
+> 识图（发图片）能力各家支持程度不同，个别平台没有识图模型时只影响发图片，不影响文字对话。
 
 配置会写进两个地方（优先级：`~/.nexusai/config.json` > `backend/.env`）：
 
@@ -294,7 +311,7 @@ nexusai setup
 
 | 配置 | 说明 | 默认 |
 |------|------|------|
-| `AI_API_BASE` | AI 服务地址。自带 Key 用 `https://openrouter.ai/api/v1`；连中继填 `…/api/ai/v1` | openrouter |
+| `AI_API_BASE` | AI 服务地址。任何 OpenAI 兼容服务都行（OpenRouter / OpenAI / DeepSeek / 智谱 / 通义 / Kimi / 硅基流动…）；连中继填 `…/api/ai/v1` | openrouter |
 | `AI_API_KEY` | **必填**。自带 Key 模式填自己的模型密钥；连中继模式填中继的公开令牌 | 空 |
 | `AI_MODEL` | 对话主模型 | 免费模型，会随上下架变化 |
 | `AI_MODEL_THINK` | 深度思考（推理）模型 | deepseek-r1:free |
@@ -308,7 +325,7 @@ nexusai setup
 | `ACEMUSIC_API_KEY` | AI 音乐（ACE-Step）。不填也能用其它音乐 provider | 空 |
 | `AI_BOT_TOKEN` | 开中继模式才设（站长用） | 空 |
 
-AI 密钥获取（免费）：https://openrouter.ai/keys
+AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也可直接用你已有的 OpenAI / DeepSeek / 智谱 / 通义 / Kimi / 硅基流动 Key —— 把上表的服务地址填进 `AI_API_BASE` 即可（`nexusai setup` 会自动填）。
 
 > 仓库默认**不内置任何可用服务器地址**，装完须配置一次。如果看到 `Hostname/IP does not match certificate` 报错，说明地址填的是示例占位域名，运行 `nexusai setup` 重新填写即可。
 >
@@ -318,7 +335,7 @@ AI 密钥获取（免费）：https://openrouter.ai/keys
 
 网页端对话默认走**前端设置页里填的接口与 Key**（前端直连 OpenAI 兼容服务），不是走后端。打开网页 → 设置，可以配：
 
-- `chatApiBase` + `openrouterKey` + `chatModel`：对话接口（默认 OpenRouter，可改成 Ollama / LM Studio / vLLM）
+- `chatApiBase` + `openrouterKey` + `chatModel`：对话接口地址、密钥、模型名。字段名叫 `openrouterKey` 是历史原因，填**任意平台**的 Key 都行（配合 `chatApiBase` 指到那家平台）；默认 OpenRouter，也可改成 Ollama / LM Studio / vLLM
 - `chatModelThink`：深度思考模型
 - `pollinationsToken`：生图令牌（不填也能画）
 - `comfyUrl` / `comfyCheckpoint` / `comfyUnet` / `comfyVae` / `comfyClipVision`：本地 ComfyUI 生图 / 视频

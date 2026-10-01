@@ -31,9 +31,9 @@ async function main(): Promise<void> {
     console.log(`[bot] 健康检查服务已启动，监听端口 ${healthPort}`);
   });
 
-  if (!CONFIG.openrouterKey) {
-    console.warn('⚠️ 未设置 OPENROUTER_API_KEY，对话将无法工作（其他平台仍会启动）');
-  }
+  // 机器人已统一走后端大脑，模型与 Key 都在后端配置，所以这里不再检查 OPENROUTER_API_KEY
+  // —— 后端换成 DeepSeek / 智谱 / OpenAI 等平台，机器人一样能用。
+  console.log(`[bot] 大脑地址：${process.env.NEXUS_API_BASE || 'http://localhost:3000/api/ai/v1'}`);
 
   const p = CONFIG.platforms;
   const adapters: BotAdapter[] = [];

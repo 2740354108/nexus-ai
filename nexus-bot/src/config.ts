@@ -6,10 +6,9 @@ function bool(v: string | undefined): boolean {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+// 说明：机器人已统一走后端大脑（/api/ai/v1），不再直连模型厂商，
+// 因此这里没有 openrouterKey / model —— 模型与密钥一律在后端 backend/.env 里配。
 export const CONFIG = {
-  openrouterKey: process.env.OPENROUTER_API_KEY || '',
-  openrouterBase: process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1',
-  model: process.env.BOT_MODEL || 'z-ai/glm-5.2',
   systemPrompt: process.env.BOT_SYSTEM_PROMPT || '',
   wechatSystemPrompt: process.env.WECHAT_SYSTEM_PROMPT || '',
   historyLimit: Number(process.env.BOT_HISTORY_LIMIT || '20'),

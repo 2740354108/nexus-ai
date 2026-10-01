@@ -111,8 +111,10 @@ let API_KEY = cfg.AI_API_KEY || ''
 // 默认模型只是“起点”。OpenRouter 的免费模型会随时上下架（如 z-ai/glm-5.2:free 已下架），
 // 因此实际请求时会由 completeWithFallback 在候选链里自动挑一个当前可用的并记住，
 // 用户无需手动改模型名。
-let MODEL = cfg.AI_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free'
-let VISION_MODEL = cfg.AI_VISION_MODEL || 'dots-studio/dots-3-note-preview:free'
+// 默认模型只在 OpenRouter 下有意义；换了别家平台（OpenAI / DeepSeek…），
+// 模型名必须来自该平台，否则会一路 404。此时留空，由 setup 写入真实模型名。
+let MODEL = cfg.AI_MODEL || (isOpenRouterBase() ? 'nvidia/nemotron-3-super-120b-a12b:free' : '')
+let VISION_MODEL = cfg.AI_VISION_MODEL || (isOpenRouterBase() ? 'dots-studio/dots-3-note-preview:free' : '')
 
 // 本次实际成功使用的模型（用于 config 展示与写回配置）
 let ACTIVE_MODEL = null
@@ -139,6 +141,98 @@ const VISION_MODEL_CANDIDATES = [
   'google/gemma-4-31b-it:free',
   'qwen/qwen3.8-27b:free',
 ]
+
+// 常见 OpenAI 兼容平台预设。选 1「自带 Key」时先挑一家，不必人人都去注册 OpenRouter。
+// keyStrict：是否强制 sk- 开头的 Key 格式（智谱等平台格式不同，放宽为非空即可）。
+// custom：自定义平台，地址与模型名由用户手填。
+const PROVIDERS = [
+  {
+    id: 'openrouter',
+    label: 'OpenRouter（聚合站 · 有免费额度 · 新手推荐）',
+    base: 'https://openrouter.ai/api/v1',
+    keyHint: '去 https://openrouter.ai/keys 免费申请，sk-or- 开头',
+    keyStrict: true,
+    models: TEXT_MODEL_CANDIDATES,
+    vision: VISION_MODEL_CANDIDATES,
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI 官方',
+    base: 'https://api.openai.com/v1',
+    keyHint: '去 https://platform.openai.com/api-keys 创建，sk- 开头',
+    keyStrict: true,
+    models: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4o'],
+    vision: ['gpt-4o-mini', 'gpt-4o'],
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek（便宜 · 国内可直连）',
+    base: 'https://api.deepseek.com/v1',
+    keyHint: '去 https://platform.deepseek.com/api_keys 创建，sk- 开头',
+    keyStrict: true,
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    vision: [],
+  },
+  {
+    id: 'moonshot',
+    label: '月之暗面 Kimi（国内）',
+    base: 'https://api.moonshot.cn/v1',
+    keyHint: '去 https://platform.moonshot.cn/console/api-keys 创建，sk- 开头',
+    keyStrict: true,
+    models: ['moonshot-v1-8k', 'moonshot-v1-32k'],
+    vision: ['moonshot-v1-8k-vision-preview'],
+  },
+  {
+    id: 'zhipu',
+    label: '智谱 GLM（国内）',
+    base: 'https://open.bigmodel.cn/api/paas/v4',
+    keyHint: '去 https://open.bigmodel.cn/usercenter/apikeys 复制，形如 xxxxxxxx.yyyyyyyy',
+    keyStrict: false,
+    models: ['glm-4-flash', 'glm-4-air', 'glm-4-plus'],
+    vision: ['glm-4v-flash', 'glm-4v-plus'],
+  },
+  {
+    id: 'dashscope',
+    label: '阿里通义千问（百炼 · 国内）',
+    base: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    keyHint: '去 https://bailian.console.aliyun.com 创建 API-KEY，sk- 开头',
+    keyStrict: false,
+    models: ['qwen-plus', 'qwen-turbo', 'qwen-max'],
+    vision: ['qwen-vl-plus', 'qwen-vl-max'],
+  },
+  {
+    id: 'siliconflow',
+    label: '硅基流动 SiliconFlow（国内聚合）',
+    base: 'https://api.siliconflow.cn/v1',
+    keyHint: '去 https://cloud.siliconflow.cn/account/ak 创建，sk- 开头',
+    keyStrict: false,
+    models: ['Qwen/Qwen2.5-7B-Instruct', 'deepseek-ai/DeepSeek-V3'],
+    vision: ['Qwen/Qwen2-VL-7B-Instruct'],
+  },
+  {
+    id: 'custom',
+    label: '其它（自定义地址 · 任何 OpenAI 兼容服务）',
+    base: '',
+    keyHint: '填你所用服务商提供的 Key',
+    keyStrict: false,
+    custom: true,
+    models: [],
+    vision: [],
+  },
+]
+
+// 当前生效的平台预设：由「已保存的配置」或「本次 setup 选择」决定。
+// 决定候选模型链用哪一家的模型名（跨平台混用会全是 404）。
+let ACTIVE_PROVIDER = null
+{
+  const saved = PROVIDERS.find((p) => p.id === cfg.AI_PROVIDER)
+  const norm = (s) => String(s || '').replace(/\/+$/, '')
+  if (saved && saved.base && API_BASE && norm(saved.base) === norm(API_BASE)) ACTIVE_PROVIDER = saved
+}
+
+function isOpenRouterBase() {
+  return /openrouter\.ai/i.test(API_BASE || '')
+}
 
 // 文档里的示例占位域名：不是真实服务器。命中时直接给出可执行指引，
 // 避免用户看到 “Hostname/IP does not match certificate's altnames” 这类看不懂的报错。
@@ -208,8 +302,9 @@ function explainError(e) {
     )
   )
     return (
-      `AI 密钥无效或未配置。\n` +
-      `   解决：运行 ${CMD} setup 填入你自己的 Key（https://openrouter.ai/keys 可免费申请）。`
+      `AI 密钥无效或未配置${API_BASE ? '（当前服务：' + API_BASE + '）' : ''}。\n` +
+      `   解决：运行 ${CMD} setup 填入你自己的 Key。\n` +
+      `   支持 OpenRouter（可免费申请 https://openrouter.ai/keys）· OpenAI · DeepSeek · 智谱 · 通义 · Kimi · 硅基流动 等。`
     )
   return m
 }
@@ -385,7 +480,9 @@ function httpsGetJson(url) {
 
 /** 是否为“模型不可用”类错误：这类错误换个模型重试即可，不是用户的问题。 */
 function isModelError(msg) {
-  return /unavailable for free|not a valid model|no endpoints found|invalid model|does not exist|not available|no allowed providers|deprecated/i.test(
+  // 覆盖各家措辞：OpenRouter「unavailable for free」、OpenAI「does not exist」、
+  // DeepSeek「Model Not Exist」、智谱「模型不存在」等。
+  return /unavailable for free|not a valid model|no endpoints found|invalid model|does not exist|model.{0,24}not exist|model.{0,24}not found|no such model|unsupported model|not available|no allowed providers|deprecated|模型不存在|不存在的模型/i.test(
     msg
   )
 }
@@ -393,6 +490,8 @@ function isModelError(msg) {
 // 线上免费模型列表缓存（一次进程内只拉一次）
 let _freeModelsCache = null
 async function getFreeModelIds(wantImage) {
+  // 免费模型清单是 OpenRouter 独有的；别家平台（OpenAI / DeepSeek / 智谱…）没有这个概念
+  if (!isOpenRouterBase()) return []
   if (!_freeModelsCache) {
     try {
       const data = await httpsGetJson('https://openrouter.ai/api/v1/models')
@@ -419,13 +518,24 @@ async function getFreeModelIds(wantImage) {
  */
 async function completeWithFallback(messages, tools) {
   const wantImage = messages.some((m) => Array.isArray(m.content))
-  const current = wantImage ? VISION_MODEL : MODEL
+  // 没配专用识图模型时退回文本模型，避免候选链为空
+  const current = wantImage ? (VISION_MODEL || MODEL) : MODEL
   const chain = []
   const push = (id) => {
     if (id && !chain.includes(id)) chain.push(id)
   }
   push(current)
-  for (const id of wantImage ? VISION_MODEL_CANDIDATES : TEXT_MODEL_CANDIDATES) push(id)
+  // 候选链必须与当前平台一致：选了 DeepSeek 就不能再拿 OpenRouter 的模型名去试。
+  // 非 OpenRouter 且平台未知时，只用配置里写明的模型，避免无谓的失败请求。
+  const preset = wantImage
+    ? (ACTIVE_PROVIDER?.vision?.length ? ACTIVE_PROVIDER.vision : [])
+    : (ACTIVE_PROVIDER?.models?.length ? ACTIVE_PROVIDER.models : [])
+  const fallbackPool = ACTIVE_PROVIDER
+    ? preset
+    : isOpenRouterBase()
+      ? (wantImage ? VISION_MODEL_CANDIDATES : TEXT_MODEL_CANDIDATES)
+      : []
+  for (const id of fallbackPool) push(id)
   try {
     for (const id of await getFreeModelIds(wantImage)) push(id)
   } catch {}
@@ -558,7 +668,8 @@ async function chatMode() {
       console.log('   ' + neon.gray(`或改用自己的 Key：${CMD} setup`))
     } else {
       console.log(neon.violet('⚠ 未配置 AI_API_KEY。'))
-      console.log('   ' + neon.cyan(`运行 ${CMD} setup 填入你的 Key（https://openrouter.ai/keys 免费申请）。`))
+      console.log('   ' + neon.cyan(`运行 ${CMD} setup 填入你的 Key`))
+      console.log('   ' + neon.gray('  支持 OpenRouter（可免费申请）· OpenAI · DeepSeek · 智谱 · 通义 · Kimi · 硅基流动 等'))
     }
     process.exit(1)
   }
@@ -793,11 +904,35 @@ async function setupMode() {
   }
 }
 
+// 选 1 之后：挑一家平台。返回平台预设（自定义平台会把地址与模型名解析好），取消则返回 null。
+async function pickProvider() {
+  console.log('\n用哪家的 Key？（直接回车 = 1 推荐）')
+  PROVIDERS.forEach((p, i) => console.log('  ' + (i + 1) + ') ' + p.label))
+  const raw = await prompt('请输入 1-' + PROVIDERS.length + '：')
+  const p = PROVIDERS[raw ? Number(raw) - 1 : 0]
+  if (!p) {
+    console.log('⚠️ 没看懂这个选项，已取消。')
+    return null
+  }
+  if (!p.custom) return p
+  const base = (await prompt('AI 服务地址（需 OpenAI 兼容，如 https://api.xxx.com/v1）：')).replace(/\/+$/, '')
+  if (!base) {
+    console.log('已取消（没有输入地址）。')
+    return null
+  }
+  const model = (await prompt('模型名（如 gpt-4o-mini / deepseek-chat）：')).trim()
+  if (!model) {
+    console.log('已取消（没有输入模型名）。')
+    return null
+  }
+  return { ...p, base, models: [model], vision: [] }
+}
+
 async function setupModeInner() {
   console.log('NEXUS AI 配置向导\n')
   console.log('当前 AI 服务地址：' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '   ← 示例占位地址，无效' : ''))
   console.log('\n请选择接入方式（输入 1 或 2）：')
-  console.log('  1) 用我自己的 AI Key —— 推荐。去 https://openrouter.ai/keys 免费申请，无限流、最稳。')
+  console.log('  1) 用我自己的 AI Key —— 推荐。OpenAI / DeepSeek / OpenRouter / 智谱 等都能用，无限流、最稳。')
   console.log('  2) 连我自己的中继服务器 —— 需要你已有公网地址（想给多人免 Key 用时选这个）。')
   const choice = await prompt('请输入 1 或 2：')
 
@@ -816,43 +951,68 @@ async function setupModeInner() {
     return
   }
 
-  const key = (await prompt('请粘贴你的 AI Key（sk-or- 开头）：')).trim()
+  const provider = await pickProvider()
+  if (!provider) return
+
+  const key = (await prompt('请粘贴你的 AI Key（' + provider.keyHint + '）：')).trim()
   if (!key) return console.log('已取消（没有输入 Key）。')
   // 先做格式体检：明显不是有效 Key 时直接拦下，绝不写进任何配置。
   // 之前是"先落盘再验证"，一个错字就会写进项目配置，导致网页端、微信/QQ 机器人
   // 全部报"服务不可用"，排查方向被完全带偏。
-  if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(key)) {
+  // 注意：sk- 前缀只是 OpenRouter / OpenAI / DeepSeek 等的习惯，智谱等平台不是这个格式，
+  // 所以只在明确要求 sk- 的平台校验它，其余平台只用"太短=没复制全"兜底。
+  if (provider.keyStrict && !/^sk-[A-Za-z0-9_-]{16,}$/.test(key)) {
     console.log('⚠️ 这看起来不是有效的 Key（应以 sk- 开头、长度 20 位以上）。')
-    console.log('   已取消，未写入任何配置。请到 https://openrouter.ai/keys 复制完整 Key 后重试。')
+    console.log('   已取消，未写入任何配置。请确认复制完整后重试。')
     return
   }
-  console.log('\n正在验证 Key 是否真的可用…')
-  API_BASE = 'https://openrouter.ai/api/v1'
+  if (key.length < 8) {
+    console.log('⚠️ Key 太短，多半没复制完整。已取消，未写入任何配置。')
+    return
+  }
+  console.log('\n正在验证 Key 是否真的可用（' + provider.label + '）…')
+  ACTIVE_PROVIDER = provider
+  API_BASE = provider.base
   API_KEY = key
+  MODEL = provider.models[0] || MODEL
+  VISION_MODEL = provider.vision[0] || ''
   try {
     await completeWithFallback([{ role: 'user', content: '你好' }])
   } catch (e) {
     console.log('❌ 验证没通过：' + explainError(e))
     console.log('   为避免把无效配置写进项目（网页端和机器人会跟着一起坏），本次未保存。')
-    console.log('   请确认 Key 复制完整、网络能访问 openrouter.ai 后，重新运行 ' + CMD + ' setup。')
+    console.log('   请确认 Key 复制完整、网络能访问 ' + provider.base + ' 后，重新运行 ' + CMD + ' setup。')
     return
   }
   console.log('✅ 通过')
-  // 验证通过才落盘：CLI 读用户级配置，网页端/机器人读项目 backend/.env，两边都要写
+  const textModel = ACTIVE_MODEL || MODEL
+  const visionFirst = provider.vision[0] || ''
+  // 验证通过才落盘：CLI 读用户级配置，网页端/机器人读项目 backend/.env，两边都要写。
+  // 模型名必须跟平台一起写，否则网页端会拿 OpenRouter 的模型名去请求别家服务。
   saveUserConfig({
     AI_API_BASE: API_BASE,
     AI_API_KEY: key,
-    ...(ACTIVE_MODEL ? { AI_MODEL: ACTIVE_MODEL } : {}),
+    AI_PROVIDER: provider.id,
+    AI_MODEL: textModel,
+    AI_VISION_MODEL: visionFirst,
   })
-  upsertEnvKeys({ AI_API_BASE: API_BASE, AI_API_KEY: key })
+  upsertEnvKeys({
+    AI_API_BASE: API_BASE,
+    AI_API_KEY: key,
+    AI_MODEL: textModel,
+    AI_VISION_MODEL: visionFirst,
+    AI_VISION_FALLBACKS: provider.vision.join(','),
+  })
   console.log('\n✅ 配置完成！现在直接敲 ' + CMD + ' 就能聊天了。')
   console.log('   已同步写入网页端 / 微信机器人的配置（backend/.env），无需手动改文件。')
+  if (!provider.vision.length) console.log('   提示：该平台暂无识图模型，发图片识别可能不可用，纯文字对话不受影响。')
   console.log('   配置已保存在：' + CONFIG_FILE + '（含你的 Key，请勿外传）')
 }
 
 function configMode() {
   const mask = (s) => (s ? s.slice(0, 8) + '…' + s.slice(-4) : '（空）')
   console.log('NEXUS AI 当前配置')
+  console.log('  平台     : ' + (ACTIVE_PROVIDER ? ACTIVE_PROVIDER.label : isOpenRouterBase() ? 'OpenRouter' : '自定义 / 其它'))
   console.log('  服务地址 : ' + (API_BASE || '（未配置）') + (isPlaceholderBase() ? '  ← 示例占位地址，无效' : ''))
   console.log('  API Key  : ' + mask(API_KEY))
   console.log('  模型     : ' + (ACTIVE_MODEL || MODEL))
@@ -930,7 +1090,7 @@ function help() {
 
 说明：
   - 用别人的中继：先 register/login 领取每日免费额度，再 chat；
-  - 用自己的 AI Key：${CMD} setup 选 1，填一次即可，无限流、最稳；
+  - 用自己的 AI Key：${CMD} setup 选 1，支持 OpenRouter / OpenAI / DeepSeek / 智谱 / 通义 / Kimi 等；
   - 配置存在 ${CONFIG_FILE}，改配置重跑 ${CMD} setup 即可。`)
 }
 
