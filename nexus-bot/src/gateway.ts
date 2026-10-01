@@ -14,7 +14,7 @@ export async function handleIncoming(msg: IncomingMessage): Promise<void> {
       await msg.reply('已清空本轮对话记忆。');
       return;
     }
-    const reply = await chat(msg.chatId, msg.text, msg.imageDataUrl);
+    const reply = await chat(msg.chatId, msg.text, msg.imageDataUrl, msg.platform);
     await msg.reply(reply);
   } catch (err) {
     console.error(`${tag} 处理失败:`, err);

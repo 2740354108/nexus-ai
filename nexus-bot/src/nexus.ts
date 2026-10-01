@@ -6,6 +6,16 @@
  * 之前各适配器分别走 OpenRouter，现在统一收敛到 NEXUS。
  */
 import { CONFIG } from './config';
+import {
+  COMPANION_ROLE,
+  loadMemory,
+  saveMemory,
+  detectSignal,
+  recordSignal,
+  buildCompanionContext,
+  isWechat,
+  type Signal,
+} from './companion';
 
 const NEXUS_API_BASE = process.env.NEXUS_API_BASE || "http://localhost:3000/api/ai/v1";
 const NEXUS_BOT_TOKEN =
@@ -25,7 +35,8 @@ const histories = new Map<string, Array<{ role: "user" | "assistant"; content: s
 export async function callNexus(
   chatId: string,
   text: string,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  platform?: string
 ): Promise<string> {
   const hist = histories.get(chatId) || [];
   // 最后一条用户消息可携带图片（多模态）；其余历史保持纯文本，避免反复传图
@@ -45,8 +56,18 @@ export async function callNexus(
     )}`
   );
 
+  // 微信通道启用阿枢：注入专属人设 + 长期记忆；其他平台用通用人设
+  let systemPrompt = SYSTEM_PROMPT;
+  let signal: Signal = { kind: null, snippet: "" };
+  if (isWechat(platform)) {
+    const memory = loadMemory();
+    signal = detectSignal(text || "");
+    const role = CONFIG.wechatSystemPrompt || COMPANION_ROLE;
+    systemPrompt = role + "\n\n" + buildCompanionContext(memory, signal);
+  }
+
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...hist.slice(-20).map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: lastUserContent },
   ];
@@ -65,6 +86,11 @@ export async function callNexus(
     });
     hist.push({ role: "assistant", content });
     histories.set(chatId, hist.slice(-20));
+    // 微信通道：把本轮检测到的"报喜 / 低落"信号写入长期记忆
+    if (isWechat(platform) && signal.kind) {
+      const m = loadMemory();
+      if (recordSignal(m, signal)) saveMemory(m);
+    }
     return content;
   } catch (err) {
     return `（调用 NEXUS 失败：${(err as Error).message}）`;

@@ -5,7 +5,8 @@ import { callNexus } from './nexus';
 export async function chat(
   chatId: string,
   userText: string,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  platform?: string
 ): Promise<string> {
-  return callNexus(chatId, userText, imageDataUrl);
+  return callNexus(chatId, userText, imageDataUrl, platform);
 }

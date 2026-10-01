@@ -11,6 +11,7 @@ export const CONFIG = {
   openrouterBase: process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1',
   model: process.env.BOT_MODEL || 'z-ai/glm-5.2',
   systemPrompt: process.env.BOT_SYSTEM_PROMPT || '',
+  wechatSystemPrompt: process.env.WECHAT_SYSTEM_PROMPT || '',
   historyLimit: Number(process.env.BOT_HISTORY_LIMIT || '20'),
 
   platforms: {
