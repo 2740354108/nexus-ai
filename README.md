@@ -307,6 +307,12 @@ pnpm pack:win       # 生成 dist-electron/ 下的 exe 安装包
 - 配置与排障：`skill/references/config.md`
 - 一键调用：`skill/scripts/nexus.sh`
 
+> **导入请用独立技能仓库**：`https://github.com/2740354108/nexus-ai-skill`
+>
+> 部分「从 GitHub 导入技能」的实现限制**单仓库最多 100 个文件**，
+> 而本仓库包含完整应用（280+ 文件）会被拒绝。
+> 上面这个仓库只含技能本体（5 个文件），专供导入使用，内容与本处一致。
+
 ## 开发
 
 ```bash
