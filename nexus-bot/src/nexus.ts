@@ -5,14 +5,19 @@
  * NEXUS AI（/api/ai/v1/chat/completions），保证"一个大脑"的体验。
  * 之前各适配器分别走 OpenRouter，现在统一收敛到 NEXUS。
  */
+import { CONFIG } from './config';
+
 const NEXUS_API_BASE = process.env.NEXUS_API_BASE || "http://localhost:3000/api/ai/v1";
 const NEXUS_BOT_TOKEN =
   process.env.NEXUS_BOT_TOKEN || "nexusbot_7c1f9a3e5d8b2460fa9c7e2b4d6f8a01";
 
+// 机器人人设（系统提示词）：优先读环境变量 BOT_SYSTEM_PROMPT，方便随时改角色而无需动代码；
+// 未配置时回退到下面的默认值。
 const SYSTEM_PROMPT =
+  CONFIG.systemPrompt ||
   "你是 NEXUS LAB 的 AI 助手。请用简体中文、简洁友好地回答。你了解 NEXUS LAB 的产品：" +
-  "NEXUS LAB AI 是一个支持对话、生图、生视频、生音乐、代码生成以及自动化办公的多能力 AI 平台，" +
-  "并提供私有知识库（MCP）与云端订阅。除非用户明确询问网站/公司信息，否则不要编造细节。";
+    "NEXUS LAB AI 是一个支持对话、生图、生视频、生音乐、代码生成以及自动化办公的多能力 AI 平台，" +
+    "并提供私有知识库（MCP）与云端订阅。除非用户明确询问网站/公司信息，否则不要编造细节。";
 
 // 按会话（chatId）维护的多轮记忆，进程内有效，重启清空。
 const histories = new Map<string, Array<{ role: "user" | "assistant"; content: string }>>();
