@@ -8,6 +8,7 @@ import https from 'https'
 import http from 'http'
 import { spawn, execSync } from 'child_process'
 import { createRequire } from 'module'
+import { loadMcpServers, toOpenAiTools, callMcpToolByName } from './mcp-client.mjs'
 
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -121,7 +122,7 @@ const _switchNoticed = new Set()
 function noticeSwitch(to) {
   if (_switchNoticed.has(to)) return
   _switchNoticed.add(to)
-  console.log(`（已自动换用可用模型：${to}）`)
+  console.log(neon.gray(`（已自动换用可用模型：${to}）`))
 }
 
 // 静态候选（优先后备）；即使全部失效，也会从线上免费列表里动态补齐。
@@ -213,14 +214,115 @@ function explainError(e) {
   return m
 }
 
+/* ===== 终端霓虹样式（零依赖，纯 ANSI 转义码；非 TTY / 管道输入时自动关闭） ===== */
+const _TTY = !!process.stdout.isTTY
+const _e = (n) => (_TTY ? '\x1b[' + n + 'm' : '')
+const RESET = _e('0')
+const BOLD = _e('1')
+const DIM = _e('2')
+const C_CYAN = _e('38;2;103;232;249m') // #67e8f9
+const C_VIOLET = _e('38;2;196;181;253m') // #c4b5fd
+const C_GREEN = _e('38;2;110;231;183m')
+const C_GRAY = _e('38;2;148;163;184m')
+const paint = (s, code) => (_TTY ? code + s + RESET : s)
+const neon = {
+  cyan: (s) => paint(s, C_CYAN),
+  violet: (s) => paint(s, C_VIOLET),
+  green: (s) => paint(s, C_GREEN),
+  gray: (s) => paint(s, C_GRAY),
+  bold: (s) => paint(s, BOLD),
+  dim: (s) => paint(s, DIM),
+}
+
+function _stripAnsi(s) {
+  return s.replace(/\x1b\[[0-9;]*m/g, '')
+}
+function _dlen(s) {
+  let n = 0
+  for (const ch of _stripAnsi(s)) n += ch.codePointAt(0) > 0x2e7f ? 2 : 1
+  return n
+}
+// 按显示宽度换行（CJK 按字断行，拉丁按空白断行）
+function _wrap(text, maxW) {
+  const out = []
+  let cur = ''
+  let w = 0
+  const add = (ch) => {
+    const cw = ch.codePointAt(0) > 0x2e7f ? 2 : 1
+    if (w + cw > maxW && cur.trim()) {
+      out.push(cur)
+      cur = ''
+      w = 0
+    }
+    cur += ch
+    w += cw
+  }
+  for (const ch of text) {
+    if (ch === '\n') {
+      out.push(cur)
+      cur = ''
+      w = 0
+      continue
+    }
+    add(ch)
+  }
+  if (cur.trim() || out.length === 0) out.push(cur)
+  return out.length ? out : ['']
+}
+// 圆角边框盒子：左上角标题标签 + 正文，颜色可青/紫
+function _box(title, body, colorCode) {
+  if (!_TTY) return (title ? '『' + title + '』\n' : '') + body + '\n'
+  const col = colorCode || C_CYAN
+  const W = Math.max(40, (process.stdout.columns || 80) - 2)
+  const inner = W - 2
+  const label = title ? ' ' + title + ' ' : ''
+  const top =
+    col +
+    '╭' +
+    BOLD +
+    label +
+    RESET +
+    col +
+    '─'.repeat(Math.max(1, W - 2 - _dlen(label))) +
+    '╮' +
+    RESET
+  const mid = _wrap(body, inner)
+    .map((ln) => {
+      const pad = Math.max(0, inner - _dlen(ln))
+      return col + '│' + RESET + ln + ' '.repeat(pad) + col + '│' + RESET
+    })
+    .join('\n')
+  const bot = col + '╰' + '─'.repeat(W - 2) + '╯' + RESET
+  return [top, mid, bot].join('\n') + '\n'
+}
+// 思考动画：返回停止函数，调用即清除本行动画
+function _thinking() {
+  if (!_TTY) return () => {}
+  const f = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+  let i = 0
+  const id = setInterval(() => {
+    process.stdout.write('\r' + neon.dim('  ' + f[i % f.length] + ' NEXUS 正在思考…'))
+    i++
+  }, 90)
+  return () => {
+    clearInterval(id)
+    process.stdout.write('\r' + ' '.repeat(30) + '\r')
+  }
+}
+
 const SYSTEM_PROMPT =
   '你是 NEXUS AI，一个本地运行的多模态助手，擅长回答各类问题、写代码、分析图片。回答简洁友好，中文为主。'
 
-function requestCompletions(messages, modelOverride) {
+function requestCompletions(messages, modelOverride, tools) {
   if (!API_BASE) return Promise.reject(new Error('未配置 AI 服务地址（请运行 ' + CMD + ' setup）'))
   const useVision = messages.some((m) => Array.isArray(m.content))
   const model = modelOverride || (useVision ? VISION_MODEL : MODEL)
-  const body = JSON.stringify({ model, messages, stream: false })
+  const body = JSON.stringify({
+    model,
+    messages,
+    stream: false,
+    ...(tools && tools.length ? { tools, tool_choice: 'auto' } : {}),
+  })
   const url = new URL(API_BASE + '/chat/completions')
   const lib = url.protocol === 'https:' ? https : http
   return new Promise((resolve, reject) => {
@@ -242,7 +344,7 @@ function requestCompletions(messages, modelOverride) {
           try {
             const json = JSON.parse(data)
             if (json.error) return reject(new Error(json.error.message || JSON.stringify(json.error)))
-            resolve(json.choices?.[0]?.message?.content || '(无回复)')
+            resolve(json.choices?.[0]?.message || { content: '(无回复)' })
           } catch (e) {
             reject(new Error('解析失败: ' + data.slice(0, 300)))
           }
@@ -315,7 +417,7 @@ async function getFreeModelIds(wantImage) {
  * 依次尝试候选模型，返回第一个成功的回复，并把可用模型记到用户配置里。
  * 遇到“模型下架/不可用”的错误自动换下一个；遇到网络/鉴权错误则直接抛出（换模型也没用）。
  */
-async function completeWithFallback(messages) {
+async function completeWithFallback(messages, tools) {
   const wantImage = messages.some((m) => Array.isArray(m.content))
   const current = wantImage ? VISION_MODEL : MODEL
   const chain = []
@@ -330,7 +432,7 @@ async function completeWithFallback(messages) {
   let lastErr
   for (const id of chain) {
     try {
-      const reply = await requestCompletions(messages, id)
+      const msg = await requestCompletions(messages, id, tools)
       ACTIVE_MODEL = id
       if (id !== current) {
         // 记住这次真正可用的模型：既写回配置文件，也同步更新内存变量。
@@ -341,7 +443,7 @@ async function completeWithFallback(messages) {
         noticeSwitch(id)
         saveUserConfig(wantImage ? { AI_VISION_MODEL: id } : { AI_MODEL: id })
       }
-      return reply
+      return msg
     } catch (e) {
       const m = String((e && e.message) || e)
       if (isModelError(m)) {
@@ -361,73 +463,160 @@ function mimeFromPath(p) {
   )
 }
 
+// 从输入里提取所有存在的图片附件（@路径，可多张，任意位置）
+function extractAttachments(text) {
+  const atts = []
+  for (const t of text.split(/\s+/)) {
+    if (!t.startsWith('@')) continue
+    const p = resolve(process.cwd(), t.slice(1))
+    if (existsSync(p)) atts.push(p)
+  }
+  return atts
+}
+
 async function buildUserMessage(input) {
-  const m = input.match(/^@(\S+)\s*([\s\S]*)$/)
-  if (m) {
-    const imgPath = resolve(process.cwd(), m[1])
-    if (!existsSync(imgPath)) throw new Error('图片不存在: ' + imgPath)
-    const b64 = readFileSync(imgPath).toString('base64')
-    const dataUrl = `data:${mimeFromPath(imgPath)};base64,${b64}`
-    return {
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: dataUrl } },
-        { type: 'text', text: m[2] || '请描述这张图片' },
-      ],
-    }
+  const atts = extractAttachments(input)
+  const text = input.replace(/@(\S+)/g, '').trim()
+  if (atts.length) {
+    const content = atts.map((p) => ({
+      type: 'image_url',
+      image_url: { url: `data:${mimeFromPath(p)};base64,${readFileSync(p).toString('base64')}` },
+    }))
+    content.push({ type: 'text', text: text || '请描述这些图片' })
+    return { role: 'user', content }
   }
   return { role: 'user', content: input }
+}
+
+// 带多 MCP 工具调用的对话循环：模型可多次调用工具，直到不再调用为止
+async function runAgent(messages, tools, servers) {
+  for (let turn = 0; turn < 8; turn++) {
+    const msg = await completeWithFallback(messages, tools)
+    messages.push(msg)
+    const calls = msg && msg.tool_calls
+    if (!calls || !calls.length) return msg
+    for (const c of calls) {
+      let result
+      try {
+        result = await callMcpToolByName(servers, c.function.name, c.function.arguments || {})
+      } catch (e) {
+        result = '工具调用失败: ' + e.message
+      }
+      messages.push({ role: 'tool', tool_call_id: c.id, content: result })
+    }
+  }
+  return messages[messages.length - 1]
+}
+
+function printMcpStatus(servers, failed) {
+  if (!servers.length && !failed.length) {
+    console.log(neon.gray('  未配置任何 MCP server。编辑 ') + neon.cyan('~/.nexusai/mcp-servers.json') + neon.gray(' 添加。'))
+    return
+  }
+  console.log(neon.violet('  MCP server 状态：'))
+  for (const s of servers) {
+    const names = (s.tools || []).map((t) => s.name + '__' + t.name)
+    console.log(
+      '   ' +
+        neon.green('●') +
+        ' ' +
+        neon.cyan(s.name) +
+        neon.gray(' (' + s.transport + ') ') +
+        (names.length ? neon.gray('工具: ') + names.join(', ') : neon.gray('无工具'))
+    )
+  }
+  for (const f of failed) {
+    console.log('   ' + neon.violet('○') + ' ' + neon.cyan(f.name) + neon.gray(' 连接失败: ' + f.error))
+  }
+  console.log('')
 }
 
 async function chatMode() {
   // 预检：没配地址、或还是示例占位域名时，就地打开配置向导，
   // 省得用户再去猜该敲哪个命令（配置完自动继续对话）。
   if (isPlaceholderBase() || !API_BASE) {
-    console.log('⚠️ 还没配置 AI 服务' + (isPlaceholderBase() ? '（当前是无效的示例地址）' : '地址') + '，先花一分钟配置一下：\n')
+    console.log(
+      neon.violet('⚠ 还没配置 AI 服务') +
+        (isPlaceholderBase() ? neon.gray('（当前是无效的示例地址）') : neon.gray('地址')) +
+        neon.gray('，先花一分钟配置一下：\n')
+    )
     await setupMode()
     const fresh = { ...parseEnvFile(ENV_FILE), ...loadUserConfig() }
     API_BASE = (fresh.AI_API_BASE || '').replace(/\/+$/, '')
     API_KEY = fresh.AI_API_KEY || ''
     if (!API_BASE || isPlaceholderBase()) {
-      console.log('仍未配置完成，已退出。')
+      console.log(neon.gray('仍未配置完成，已退出。'))
       process.exit(1)
     }
   }
   if (!authToken()) {
     const rb = relayBase()
     if (rb) {
-      console.log('⚠️ 你连的是 NEXUS 中继，需要先注册登录才能使用（每天免费额度）。')
-      console.log(`   注册：${CMD} register 你的邮箱 密码`)
-      console.log(`   登录：${CMD} login 你的邮箱 密码`)
-      console.log(`   或改用自己的 Key：${CMD} setup`)
+      console.log(neon.violet('⚠ 你连的是 NEXUS 中继，需要先注册登录才能使用（每天免费额度）。'))
+      console.log('   ' + neon.cyan(`${CMD} register 你的邮箱 密码`))
+      console.log('   ' + neon.cyan(`${CMD} login 你的邮箱 密码`))
+      console.log('   ' + neon.gray(`或改用自己的 Key：${CMD} setup`))
     } else {
-      console.log('⚠️ 未配置 AI_API_KEY。')
-      console.log(`   运行 ${CMD} setup 填入你的 Key（https://openrouter.ai/keys 免费申请）。`)
+      console.log(neon.violet('⚠ 未配置 AI_API_KEY。'))
+      console.log('   ' + neon.cyan(`运行 ${CMD} setup 填入你的 Key（https://openrouter.ai/keys 免费申请）。`))
     }
     process.exit(1)
   }
+
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }]
-  console.log('NEXUS AI 终端对话（Ctrl+D 或 /exit 退出，/clear 清空，@图片路径 发图识图）\n')
+  console.log(
+    _box(
+      ' NEXUS AI ',
+      '本地多模态助手 · 终端版 v' + VERSION + '\n' + neon.gray('青紫霓虹 · 零依赖 · 多模型自动切换'),
+      C_VIOLET
+    ) +
+      neon.gray('  命令：') +
+      neon.cyan('/exit') +
+      neon.gray(' 退出   ') +
+      neon.cyan('/clear') +
+      neon.gray(' 清空   ') +
+      neon.cyan('@图片路径') +
+      neon.gray(' 发图识图') +
+      '\n'
+  )
+
   const rl = createInterface({ input: process.stdin, output: process.stdout })
+  rl.setPrompt(neon.cyan('▶ ') + neon.violet('你') + neon.gray(' › '))
+  rl.prompt()
   for await (const line of rl) {
     const cmd = line.trim()
-    if (cmd === '/exit' || cmd === '/quit') break
+    if (cmd === '/exit' || cmd === '/quit') {
+      console.log(neon.gray('  再见 👋'))
+      break
+    }
     if (cmd === '/clear') {
       messages.length = 1
-      console.log('已清空对话。\n')
+      console.log(neon.gray('  已清空对话。'))
+      rl.prompt()
       continue
     }
-    if (!cmd) continue
+    if (!cmd) {
+      rl.prompt()
+      continue
+    }
     try {
+      const atts = extractAttachments(cmd)
       const um = await buildUserMessage(cmd)
       messages.push(um)
-      process.stdout.write('NEXUS> ')
+      const textOnly = cmd.replace(/@(\S+)/g, '').trim() || (atts.length ? '（看图提问）' : '')
+      const uBody = atts.length
+        ? textOnly + '\n' + neon.gray('📎 已附图片 ') + neon.cyan(String(atts.length)) + neon.gray(' 张')
+        : textOnly
+      console.log(_box(' 你 ', uBody, C_VIOLET))
+      const stop = _thinking()
       const reply = await completeWithFallback(messages)
+      stop()
       messages.push({ role: 'assistant', content: reply })
-      console.log(reply + '\n')
+      console.log(_box(' NEXUS AI ', reply, C_CYAN) + neon.green('  ✓ ') + neon.gray('模型: ' + (ACTIVE_MODEL || MODEL)))
     } catch (e) {
-      console.log('出错了: ' + explainError(e) + '\n')
+      console.log(_box(' 出错 ', explainError(e), C_VIOLET))
     }
+    rl.prompt()
   }
   rl.close()
 }
@@ -733,6 +922,7 @@ function help() {
   ${CMD} chat          终端对话模式（同 ${CMD}）
   ${CMD} app           启动桌面应用（GUI 窗口）
   ${CMD} serve         启动本地后端 + 前端（浏览器访问 http://localhost:5173）
+  ${CMD} up [start|stop|restart|status]  常驻运行后端+机器人（云电脑 24h 在线，崩了自动重启）
   ${CMD} register      注册中继账号（${CMD} register 邮箱 密码）
   ${CMD} login         登录中继账号（${CMD} login 邮箱 密码）
   ${CMD} me            查看当前登录与每日额度
@@ -837,6 +1027,14 @@ switch (cmd) {
   case 'serve':
     serveMode()
     break
+  case 'up': {
+    // 常驻模式：后台守护后端 + 机器人，崩了自动重启（云电脑 24h 在线用）
+    const script = join(ROOT, 'scripts', 'nexus-up.sh')
+    const sub = process.argv.slice(3)
+    const child = spawn('bash', [script, ...sub], { stdio: 'inherit' })
+    child.on('exit', (code) => process.exit(code || 0))
+    break
+  }
   case 'app':
   case 'start':
     appMode()

@@ -5,6 +5,7 @@ import { verifyToken } from './auth'
 import { checkQuota, recordUsage } from './billing'
 import { isRelayMode, isOwnerToken, enforceRelayQuota, bumpRelayUsage, RELAY_DAILY_LIMIT } from './relay'
 import { webSearch, buildWebContext } from '../lib/websearch'
+import { getMcp, callMcpToolByName } from './mcpAggregator'
 
 export const aiRouter = Router()
 
@@ -417,6 +418,71 @@ async function callUpstream(
   return content
 }
 
+// 底层一次性对话（可带工具），返回完整 message 对象（含可能的 tool_calls）
+async function rawChat(
+  model: string,
+  fullMessages: any[],
+  tools: any[] | undefined,
+  temperature: number,
+  maxTokens: number,
+): Promise<any> {
+  const upstream = await fetch(`${env.AI_API_BASE.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.AI_API_KEY}`,
+      'HTTP-Referer': 'https://nexus.ai',
+      'X-Title': 'NEXUS',
+    },
+    body: JSON.stringify({
+      model,
+      messages: fullMessages,
+      temperature,
+      max_tokens: maxTokens,
+      ...(tools && tools.length ? { tools, tool_choice: 'auto' } : {}),
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  const data: any = await upstream.json().catch(() => null)
+  if (!upstream.ok) {
+    const code = data?.error?.code || upstream.status
+    const msg = data?.error?.message || `HTTP ${upstream.status}`
+    const err = new Error(`${code}: ${msg}`)
+    ;(err as any).statusCode = upstream.status
+    throw err
+  }
+  return data?.choices?.[0]?.message || { content: '' }
+}
+
+// 带 MCP 工具调用的对话循环：模型可多次调用工具，直到不再调用为止
+async function agentLoop(
+  model: string,
+  systemPrompt: string,
+  userMessages: any[],
+  tools: any[],
+  servers: any[],
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  const full: any[] = [{ role: 'system', content: systemPrompt }, ...userMessages]
+  for (let turn = 0; turn < 8; turn++) {
+    const msg = await rawChat(model, full, tools, temperature, maxTokens)
+    full.push(msg)
+    const calls = msg && msg.tool_calls
+    if (!calls || !calls.length) return msg.content || ''
+    for (const c of calls) {
+      let result: string
+      try {
+        result = await callMcpToolByName(servers, c.function.name, c.function.arguments || {})
+      } catch (e: any) {
+        result = '工具调用失败: ' + (e?.message || e)
+      }
+      full.push({ role: 'tool', tool_call_id: c.id, content: result })
+    }
+  }
+  return full[full.length - 1].content || ''
+}
+
 /**
  * 以流式（SSE）调用 OpenAI 兼容接口，逐块转发 token。
  * 通过 onToken 回调把上游增量内容实时吐出；start 前抛错（标记 beforeFirstToken）才允许换模型。
@@ -531,6 +597,7 @@ aiRouter.post('/chat', async (req: Request, res: Response) => {
   const maxTokens = mode === 'code' ? 4096 : 2048
 
   const chain = await (mode === 'think' ? getThinkModelChain() : getModelChain())
+  const mcp = await getMcp()
   const t0 = Date.now()
   let fails: AttemptFail[] = []
 
@@ -540,7 +607,9 @@ aiRouter.post('/chat', async (req: Request, res: Response) => {
     fails = []
     for (const model of chain) {
       try {
-        const content = await callUpstream(model, systemPrompt, userMessages, temperature, maxTokens)
+        const content = mcp.tools.length
+          ? await agentLoop(model, systemPrompt, userMessages, mcp.tools, mcp.servers, temperature, maxTokens)
+          : await callUpstream(model, systemPrompt, userMessages, temperature, maxTokens)
         if (cuid) void recordUsage(cuid, 'chat', 1)
         return res.json({ success: true, content, model })
       } catch (err: any) {

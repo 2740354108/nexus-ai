@@ -1,0 +1,31 @@
+# ============================================================================
+# NEXUS 常驻 systemd 单元（云电脑 / Linux 服务器开机自启用）
+# ----------------------------------------------------------------------------
+# 安装：
+#   1) 把本文件放到 /etc/systemd/system/nexus.service
+#   2) 把项目放到 /opt/nexus-ai（或改下面的 WorkingDirectory / ExecStart 路径）
+#   3) 确保 /opt/nexus-ai/scripts/nexus-up.sh 有执行权限：chmod +x scripts/nexus-up.sh
+#   4) 改 User= 为你实际的普通用户名（不要用 root 跑 tsx）
+#   5) 执行：
+#        sudo systemctl daemon-reload
+#        sudo systemctl enable --now nexus
+#   之后云电脑重启会自动拉起，机器人不再掉线。
+# ============================================================================
+[Unit]
+Description=NEXUS AI 常驻（后端 + QQ/微信机器人）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nexus-ai
+ExecStart=/opt/nexus-ai/scripts/nexus-up.sh foreground
+Restart=always
+RestartSec=3
+# 机器人依赖本机后端，给后端留足启动时间（脚本内部已自动重试连接，这里只是保险）
+TimeoutStartSec=60
+User=ubuntu
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import http from "node:http";
+import { getMcp } from "./mcpAggregator";
 
 /**
  * MCP 转发网关
@@ -14,6 +15,23 @@ const router = Router();
 
 const MCP_HOST = process.env.NEXUS_MCP_HOST || "localhost";
 const MCP_PORT = Number(process.env.NEXUS_MCP_PORT || 8787);
+
+router.get("/servers", async (req: Request, res: Response) => {
+  try {
+    const { tools, servers } = await getMcp()
+    res.json({
+      success: true,
+      servers: servers.map((s: any) => ({
+        name: s.name,
+        transport: s.transport,
+        tools: (s.tools || []).map((t: any) => s.name + "__" + t.name),
+      })),
+      toolCount: tools.length,
+    })
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || String(e) })
+  }
+})
 
 router.all("/mcp", (req: Request, res: Response) => {
   const headers: Record<string, any> = { ...req.headers };
