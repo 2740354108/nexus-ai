@@ -1,8 +1,8 @@
 {
   "project_type": "web",
   "sub_project_type": "",
-  "name": "NEXUS AI 助手",
+  "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "修复自动换模型提示反复刷屏",
+  "version_description": "Rewrite full architecture docs in README",
   "preview_type": "pc"
 }

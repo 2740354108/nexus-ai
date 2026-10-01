@@ -15,23 +15,133 @@
 
 ## 架构
 
+一句话：**所有入口都是「瘦客户端」，能力全部集中在同一个后端**。网页、桌面、终端、手机、社交机器人只是不同的壳，真正干活的是后端；后端再向下对接「模型层」（各家 AI 接口）与「存储层」（内嵌或云端数据库），并通过 MCP 层接入外部工具。
+
 ```
-┌────────────┐   ┌────────────┐   ┌────────────────┐
-│  网页/桌面  │   │  后端 API   │   │ 内嵌数据库/外部PG │
-│ (React)    │──▶│ (Express)  │──▶│ 本地 或 云端    │
-└────────────┘   └─────┬──────┘   └────────────────┘
-                       │
-              ┌────────┴────────┐
-              │  微信/QQ 机器人   │
-              │  (nexus-bot)    │
-              └─────────────────┘
+用户触点（任一入口都能用）
+  ├─ 网页 /ai         React + Vite         :5173
+  ├─ 桌面 App         Electron
+  ├─ 终端对话         nexusai (CLI)
+  ├─ 手机 App         Capacitor (Android)
+  └─ 社交机器人       nexus-bot             :3939
+          │
+          ▼ 所有入口统一走后端 API：http://localhost:3000/api
+┌─ 服务层 · Backend（Express, :3000）
+│  对话 / 识图 / 生图 / 音乐 / 视频
+│  账号 / 会话 / 计费 / 配置 / 中继 / MCP 网关
+└────────────────────────────────────
+          │
+          ▼
+┌─ 支撑层
+│  存储：PGlite 内嵌（默认，零安装）· TCB 云 · 外部 PostgreSQL
+│  模型：OpenRouter（对话·识图·思考）· Agnes（图/视频）· MiniMax（音乐）· ComfyUI（本地视频）
+│  能力：nexus-mcp（多 MCP 工具聚合）· nexus-up（后端与机器人常驻守护）
+└────────────────────────────────────
 ```
 
-- **前端** `frontend/`：React + Vite
-- **后端** `backend/`：Express，负责 AI 调用、数据库、文件存储
-- **机器人** `nexus-bot/`：把各聊天平台消息转给后端
-- **本地入口** `cli/nexusai.mjs`：终端对话 / 启动服务 / 打开桌面应用
-- **安装器** `installer/`：发布到 npm 的 `nexus-ai`，用于 `npx` 一键安装
+### 模块清单
+
+| 目录 | 角色 | 技术 | 端口 |
+|------|------|------|------|
+| `frontend/` | 网页界面 + 手机 App 界面 | React + Vite + Tailwind + shadcn/ui | `5173`（开发） |
+| `electron/` | 桌面应用外壳，自动拉起后端与前端 | Electron | — |
+| `cli/nexusai.mjs` | 终端对话、启动服务、打开桌面、常驻管理 | 纯 Node（零第三方依赖） | — |
+| `cli/mcp-client.mjs` | CLI 侧多 MCP 客户端（stdio + HTTP 两种） | 纯 Node | — |
+| `backend/` | 全部业务能力与 AI 代理 | Express + TypeScript | `3000` |
+| `backend/web/` | 前端构建产物，由后端一并托管（单端口部署时） | — | 复用 `3000` |
+| `nexus-bot/` | 社交平台机器人网关 | TypeScript + tsx | `3939` |
+| `nexus-mcp/` | 自研 MCP 服务器（知识库 / 能力清单 / nexus_chat） | @modelcontextprotocol/sdk | `8787` / stdio |
+| `installer/` | npm 安装器 `nexus-ai`，用于 `npx` 一键安装 | 纯 Node | — |
+| `scripts/nexus-up.sh` | 后端 + 机器人双进程常驻守护 | Bash | — |
+| `scripts/nexus.service` | 开机自启样例 | systemd | — |
+
+### 后端接口分区
+
+后端按业务拆成独立模块，挂载在不同前缀下（全部在 `/api` 之下）：
+
+| 前缀 | 模块 | 作用 |
+|------|------|------|
+| `/api` | `system` | 健康检查、系统信息 |
+| `/api/ai` | `ai` | 对话（`/chat`、`/chat/stream`、`/v1/*` OpenAI 兼容），多模型链自动切换 |
+| `/api/image` | `image` | 文生图（Pollinations，免费开箱即用） |
+| `/api/agnes` | `agnes` | 文生图 / 图生图 / 文生视频 / 图生视频 |
+| `/api/music` | `music` | 音乐生成（MiniMax / Suno / HuggingFace / Replicate / ACE） |
+| `/api/video` | `video` | 图生视频 / 文生视频（ComfyUI） |
+| `/api/auth` | `auth` | 自托管账号（JWT）注册登录 |
+| `/api/relay` | `relay` | 公开中继：注册 / 登录 / 每日额度 |
+| `/api/histories` | `histories` | 聊天记录 |
+| `/api/conversations` | `conversations` | 会话管理 |
+| `/api/mcp` · `/api/servers` | `mcp` + `mcpAggregator` | MCP 转发网关（JSON-RPC 透传）+ 多 MCP 聚合状态 |
+| `/api/billing` | `billing` | 套餐 / 订阅 / 订单 / 用量 |
+| `/api/config` | `config` | 云端用户配置（多租户隔离） |
+
+### 四条主要链路
+
+**A · 网页 / 桌面**　浏览器(`5173`) → Vite 代理 `/api` → 后端(`3000`) → 模型层 / 存储层。桌面版由 Electron 自动拉起后端和前端，窗口内加载 `http://localhost:5173`。
+
+**B · 终端对话**　`nexusai chat` → 直接调模型接口（不经后端）。若配了 MCP，会先连上这些 server、把工具表交给模型，由模型自己决定调用哪个工具，多轮跑完再输出。
+
+**C · 社交机器人**　微信 / QQ / Telegram / Discord / 企业微信 → `nexus-bot`(`3939`) 统一成标准消息 → POST 后端 `/api/ai/v1/chat/completions` → 回复按原路回传平台。
+
+**D · 外部应用接入**　任何第三方应用 → 后端 OpenAI 兼容接口 `http://localhost:3000/api/ai/v1/chat/completions`（带 `AI_BOT_TOKEN` 或用户 Key 鉴权）→ 模型层。等于把你的模型能力开放成一整套标准接口。
+
+### 存储层
+
+三种模式，改一个 `DB_MODE` 即可切换（详见下方「配置说明」）：
+
+- **PGlite**（默认）：内嵌的 PostgreSQL（纯 WASM），**零安装**，数据落在本地 `nexus-data/` 目录
+- **TCB 云端**：托管 PostgreSQL，服务器自动配置
+- **外部 PostgreSQL**：保持 `DB_MODE=local` 并填 `DATABASE_URL`，即可与云端共用同一份数据，两边互通
+
+### 模型层
+
+对话默认走 **OpenRouter 的 OpenAI 兼容接口**，可换 DeepSeek / GLM / Kimi 等任意兼容服务。后端维护**多模型链**：对话、识图、深度思考各有一条链，主模型被限流或下架时自动切到下一个；CLI 侧同样会自动换用可用模型并记住选择。
+
+### 能力层与运维层
+
+- **`nexus-mcp`**：既能作为独立 MCP 服务器对外提供工具，也能被后端的 `/api/mcp` 网关转发
+- **多 MCP 聚合**：CLI 与后端共享同一份 `~/.nexusai/mcp-servers.json`，可同时接入多个本地进程（stdio）或远程（HTTP）MCP server，工具名自动加前缀去重
+- **`nexus-up`**：把后端和机器人做成后台常驻，谁崩了自动拉起，附 `systemd` 配置可开机自启
+
+### 端口速查
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| `3000` | 后端 API | 所有能力的统一入口；生产环境同时托管网页 |
+| `5173` | 前端开发服务器 | Vite，`/api` 代理到 `3000` |
+| `3939` | 机器人主进程 | nexus-bot 运行端口 |
+| `8787` | nexus-mcp HTTP 模式 | MCP 服务器 |
+| `8788` | 企业微信回调 | 需公网可访问 |
+| `8789` | 微信公众号回调 | 需公网可访问 |
+| `3001` | OneBot / NapCat | 非官方 QQ 通道（默认 WebSocket） |
+| `8188` | ComfyUI | 本地生视频 |
+| `11434` | Ollama | 本地模型 |
+| `1234` | LM Studio | 本地模型（OpenAI 兼容） |
+
+### 技术栈
+
+| 层 | 技术 |
+|----|------|
+| 前端 | React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui（Radix）+ Framer Motion + TanStack Query + React Router |
+| 桌面 | Electron |
+| 手机 | Capacitor（Android） |
+| 后端 | Node.js + Express + TypeScript + Zod + JWT |
+| 机器人 | TypeScript + discord.js + ws |
+| MCP | @modelcontextprotocol/sdk |
+| 数据 | PGlite（内嵌 WASM）/ TCB 托管 PostgreSQL / 外部 PostgreSQL |
+| 模型 | OpenRouter · Agnes · MiniMax · Suno · HuggingFace · Replicate · ComfyUI · Ollama |
+| 安装 | `npx`（installer/）+ pnpm workspace |
+
+### 数据与配置落点
+
+| 内容 | 位置 |
+|------|------|
+| 终端配置 | `~/.nexusai/config.json`（优先级最高） |
+| 后端配置 | `backend/.env` |
+| 机器人配置 | `nexus-bot/.env` |
+| MCP 聚合配置 | `~/.nexusai/mcp-servers.json` |
+| 本地数据 | `nexus-data/`（PGlite 数据目录） |
+| 常驻日志 | `.nexus-runtime/logs/` |
 
 ## 快速开始（推荐）：npx 直接从 GitHub 安装
 
@@ -185,6 +295,17 @@ pnpm pack:win       # 生成 dist-electron/ 下的 exe 安装包
 - **微信 / QQ**：需各自平台的账号或审核通过的机器人
 - **Telegram / Discord**：填 Bot Token 即可，本地轮询无需公网
 - **企业微信**：支持群机器人 webhook 或企业应用双向消息
+
+## 作为技能接入 Agent（SKILL.md）
+
+仓库根目录的 `SKILL.md` 让本项目可以被支持「从 GitHub 导入技能」的 Agent 直接导入。
+导入后，Agent 就知道如何调用你本机的 NEXUS AI——对话、识图、文生图、生视频、生音乐，
+并在服务没启动时把它拉起来。
+
+- 技能入口：`SKILL.md`
+- 接口速查：`skill/references/api.md`
+- 配置与排障：`skill/references/config.md`
+- 一键调用：`skill/scripts/nexus.sh`
 
 ## 开发
 
