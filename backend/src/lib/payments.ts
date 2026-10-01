@@ -38,6 +38,18 @@ export function isRealPaymentConfigured(_channel: PayChannel): boolean {
   return true
 }
 
+/** 拼出当前访问的公网地址（用于付款后回跳站点；优先读环境变量） */
+export function getPublicBaseUrl(req?: any): string {
+  const envBase = process.env.PAYMENT_PUBLIC_BASE_URL?.trim().replace(/\/+$/, '')
+  if (envBase) return envBase
+  const host = req?.headers?.host || req?.hostname
+  if (!host) return ''
+  const proto =
+    (req?.headers?.['x-forwarded-proto'] as string)?.split(',')[0]?.trim() ||
+    (req?.secure ? 'https' : 'http')
+  return `${proto}://${host}`
+}
+
 /** 人民币「分」换算成美元，保留两位 */
 export function cnyCentsToUsd(cents: number): number {
   const usd = (cents / 100) / CNY_TO_USD_RATE
