@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "配置向导支持多家平台 Key，不再限定 OpenRouter",
-  "preview_type": "pc"
+  "version_description": "Fix README errors and clean template residue",
+  "preview_type": "mobile"
 }

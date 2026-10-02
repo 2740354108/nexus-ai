@@ -7,7 +7,7 @@
  * - 付款后回站点点「我已支付」手动激活（个人收款无 IPN 回调，手动确认最稳）
  *
  * 收款账号与汇率通过环境变量配置：
- *   PAYPAL_ME_HANDLE    PayPal.me 用户名（默认 29102212a）
+ *   PAYPAL_ME_HANDLE    PayPal.me 用户名（部署时必填，未填则收款链接无效）
  *   CNY_TO_USD_RATE     人民币兑美元汇率（默认 7.2）
  */
 
@@ -30,7 +30,7 @@ export interface CreatePaymentResult {
   returnUrl?: string
 }
 
-const PAYPAL_ME_HANDLE = (process.env.PAYPAL_ME_HANDLE || '29102212a').replace(/[^A-Za-z0-9]/g, '')
+const PAYPAL_ME_HANDLE = (process.env.PAYPAL_ME_HANDLE || 'your-paypal-handle').replace(/[^A-Za-z0-9]/g, '')
 const CNY_TO_USD_RATE = Number(process.env.CNY_TO_USD_RATE) || 7.2
 
 /** 是否已配置真实收款（PayPal.me 始终视为已配置，直接跳转） */

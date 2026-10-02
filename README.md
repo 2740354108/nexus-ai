@@ -43,10 +43,11 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 - 网页界面 `nexusai serve`：浏览器访问 `http://localhost:5173`，功能最全
 - 手机 App：Capacitor 打包的安卓端，形态与网页一致
 - 机器人接入：微信、QQ、Telegram、Discord、企业微信（按需开启）
-- 文生图 / 图生图：网页「图像 / Agnes」页，联网即可用
+- 文生图 / 图生图：网页「图像 / Agnes」页；文生图联网即可，图生图 / 视频需配 `AGNES_API_KEY`
 - 文生视频 / 图生视频：云端免费接口，或本地 ComfyUI
 - AI 音乐：一句话生成完整曲目
 - 自动化办公（Workflow）：链式任务，结果可回传飞书
+- 账号与计费：自托管免费档 + 付费套餐，支持 PayPal 收款（站长可开启）
 - 本地模型接入：Ollama、LM Studio、vLLM 直接接
 - MCP 聚合：CLI + 后端共享配置，接多个厂商 / 本地 MCP 工具，对话时自动调用
 - 本地存储 / 云端互通：默认存本地内嵌数据库；也可直连外部 PostgreSQL / 云端数据库，两边数据一致
@@ -92,8 +93,11 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 | `nexus-bot/` | 社交平台机器人网关 | TypeScript + tsx | `3939` |
 | `nexus-mcp/` | 自研 MCP 服务器（知识库 / 能力清单 / nexus_chat） | @modelcontextprotocol/sdk | `8787` / stdio |
 | `installer/` | npm 安装器 `nexus-ai`，用于 `npx` 安装 | 纯 Node | — |
-| `scripts/nexus-up.sh` | 后端 + 机器人双进程常驻守护 | Bash | — |
-| `scripts/nexus.service` | 开机自启样例 | systemd | — |
+| `scripts/nexus-up.sh` | 后端 + 机器人双进程常驻守护（仅 Linux / macOS / Git Bash / WSL） | Bash | — |
+| `start-local.bat` | Windows 原生一键启动后端 + 前端（无需 Git Bash） | Batch | — |
+| `scripts/nexus.service` | 开机自启样例（Linux systemd） | systemd | — |
+| `docs/` | 架构图等文档资源 | — | — |
+| `skill/` | 作为技能接入 Agent 的参考文档与脚本 | — | — |
 
 ### 后端接口分区
 
@@ -127,10 +131,10 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 
 ### 存储层
 
-三种模式，改一个 `DB_MODE` 即可切换（详见「第一次配置」）：
+存储有三种形态，但「外部 PostgreSQL」**不是**靠改 `DB_MODE` 切换的——它要保持 `DB_MODE=local` 再填 `DATABASE_URL`（见「云端互通」）。`DB_MODE` 只在「内嵌」与「云端 TCB」之间切换：
 
-- 默认用 PGlite：内嵌的 PostgreSQL（纯 WASM），数据落在本地 `nexus-data/` 目录
-- TCB 云端：托管 PostgreSQL，服务器自动配置
+- 默认用 PGlite：内嵌的 PostgreSQL（纯 WASM），数据落在本地 `nexus-data/` 目录（前提是后端读到了 `.env`；用安装器装的人默认就是这个，裸跑 `pnpm -C backend dev` 且没建 `.env` 的人则是 `cloud`）
+- TCB 云端：托管 PostgreSQL，服务器自动配置（`DB_MODE=cloud`）
 - 外部 PostgreSQL：保持 `DB_MODE=local` 并填 `DATABASE_URL`，即可与云端共用同一份数据，两边互通
 
 ### 模型层
@@ -248,11 +252,13 @@ cd installer && npm publish
 git clone https://github.com/2740354108/nexus-ai.git
 cd nexus-ai
 
-# 2. 装依赖（根目录 + 三个子目录，共 4 次）
+# 2. 装依赖（根目录 + 各子目录，共 5 次）
 pnpm install                # 根目录
 pnpm -C backend install     # 后端
 pnpm -C frontend install    # 前端
 pnpm -C nexus-bot install   # 机器人（只玩网页/终端可不装）
+pnpm -C nexus-mcp install   # MCP 服务器（接 MCP 工具必装）
+pnpm -C nexus-mcp build     # 把 MCP 服务器从 TypeScript 构建成 JS
 
 # 3. 第一次必做：配置 AI Key（向导式，自动写文件）
 pnpm nexusai setup
@@ -316,7 +322,7 @@ nexusai setup
 | `AI_API_BASE` | AI 服务地址。任何 OpenAI 兼容服务都行（OpenRouter / OpenAI / DeepSeek / 智谱 / 通义 / Kimi / 硅基流动…）；连中继填 `…/api/ai/v1` | openrouter |
 | `AI_API_KEY` | **必填**。自带 Key 模式填自己的模型密钥；连中继模式填中继的公开令牌 | 空 |
 | `AI_MODEL` | 对话主模型 | 免费模型，会随上下架变化 |
-| `AI_MODEL_THINK` | 深度思考（推理）模型 | deepseek-r1:free |
+| `AI_MODEL_THINK` | 深度思考（推理）模型 | `deepseek/deepseek-r1:free`（OpenRouter 模型 ID 须带厂商前缀；具体默认以 `backend/.env.example` 为准） |
 | `AI_VISION_MODEL` / `AI_VISION_FALLBACKS` | 识图模型链（发图片时自动切） | 免费视觉模型 |
 | `DB_MODE` | `local`（默认，内嵌数据库）或 `cloud`（云端 TCB） | local |
 | `NEXUS_DATA_DIR` | 内嵌数据库存放目录 | `./nexus-data` |
@@ -335,7 +341,7 @@ AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也�
 
 ### 6.3 前端「设置页」（网页 / 手机端对话用）
 
-网页端对话默认走前端设置页里填的接口与 Key（前端直连 OpenAI 兼容服务），不是走后端。打开网页 → 设置，可以配：
+网页端对话**走后端**（`POST /api/ai/chat/stream`），只是把你在设置页填的 `chatApiBase` / `openrouterKey` / `chatModel` 作为请求体交给后端去代理转发，并不在前端直连模型服务。打开网页 → 设置，可以配：
 
 - `chatApiBase` + `openrouterKey` + `chatModel`：对话接口地址、密钥、模型名。字段名叫 `openrouterKey` 是历史原因，填任意平台的 Key 都行（配合 `chatApiBase` 指到那家平台）；默认 OpenRouter，也可改成 Ollama / LM Studio / vLLM
 - `chatModelThink`：深度思考模型
@@ -345,7 +351,7 @@ AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也�
 - `feishuWebhook`：飞书回传（见「飞书回传」）
 - `routerEndpoint` / `routerModel` / `routerApiKey`：备用模型，主模型可自动把子任务转给它
 
-> 两套配置的区别：后端 `.env` 是「服务端」用的（机器人、对外接口、音乐 / 视频生成）；前端设置页是「网页 / 手机端自己直连」用的。想让网页端直接调本机的 Ollama，就改前端设置页；想让机器人和对外接口用某个模型，就改后端 `.env`。
+> 两套配置的区别：后端 `.env` 是「服务端」用的（机器人、对外接口、音乐 / 视频生成）；前端设置页是「网页 / 手机端填写的接口与 Key」，网页端对话时会把这些发给后端、由后端代理请求模型。想让网页端用本机的 Ollama，就改前端设置页里的 `chatApiBase`；想让机器人和对外接口用某个模型，就改后端 `.env`。
 
 ---
 
@@ -362,8 +368,7 @@ nexusai serve
 - 智能对话：聊天 + 发图识图 + 深度思考 / 联网开关
 - AI 音乐：一句话生成曲目
 - 图生视频：上传一张图让它动起来（或文生视频）
-- 图像 / 绘图：文生图、切 ComfyUI 高质量
-- Agnes AI：免费多模态，文生图 / 图生图 / 文生视频 / 图生视频合一
+- 图像 / Agnes：文生图（Pollinations，免费）、高质量生图（ComfyUI）、文生图 / 图生图 / 文生视频 / 图生视频（Agnes，需 `AGNES_API_KEY`）
 - 自动化：Workflow 链式任务 + 飞书回传（见「链式自动化」）
 - 我的空间 / 设置：历史、配置、模型切换
 
@@ -416,7 +421,7 @@ pnpm install && pnpm pack:win    # 生成 dist-electron/ 下的 exe（必须在 
 
 ### 7.4 手机 App
 
-前端用 Capacitor 打包安卓端，安装到手机后形态和网页一致，含「自动化」标签页。
+前端用 Capacitor 打包安卓端，安装到手机后形态和网页一致，含「自动化」标签页。安卓端完整打包 / 签名发布不在本文范围（需本地 Android SDK + Capacitor 环境，按官方流程操作即可）。
 
 ---
 
@@ -458,7 +463,7 @@ cd nexus-bot && pnpm start
 
 ### 8.3 让机器人不掉线
 
-机器人依赖后端常驻，见「常驻运行」。最简单的方式是在同一台机器用 `nexusai up` 把后端 + 机器人一起守护起来，谁崩了自动重启。
+机器人依赖后端常驻，见「常驻运行」。最简单的方式是在同一台机器用 `nexusai up` 把后端 + 机器人一起守护起来，谁崩了自动重启（仅 Linux / macOS / Git Bash / WSL；Windows 原生请用根目录的 `start-local.bat`）。
 
 ### 8.4 常见机器人故障
 
@@ -475,11 +480,11 @@ cd nexus-bot && pnpm start
 
 适合：云电脑 / 服务器上 24 小时挂着，让机器人保持在线。
 
-项目里自带守护脚本 `scripts/nexus-up.sh`（纯 bash，零依赖），它会同时守护后端和机器人，任何一个崩了 2 秒后自动重启。
+项目里自带守护脚本 `scripts/nexus-up.sh`（纯 bash，零依赖，仅 Linux / macOS / Git Bash / WSL；Windows 原生请用根目录的 `start-local.bat`），它会同时守护后端和机器人，任何一个崩了 2 秒后自动重启。
 
 ```bash
 # 在项目根目录
-nexusai up                 # 后台启动并守护（等效 ./scripts/nexus-up.sh start）
+nexusai up                 # 后台启动并守护（等效 ./scripts/nexus-up.sh start，仅 Linux / macOS / Git Bash / WSL）
 nexusai up status          # 看在不在跑、进程号
 nexusai up stop            # 停止
 nexusai up restart         # 重启
@@ -507,7 +512,7 @@ sudo systemctl enable --now nexus
 | 能力 | 入口 | 需要什么 | 难度 |
 |------|------|----------|------|
 | 文生图 | 网页「图像」页 | 联网即可（Pollinations 免费） | 零 |
-| 图生图 / 文生视频 / 图生视频 | 网页「Agnes」页 | 配 `AGNES_API_KEY`（或云端已配） | 低 |
+| 图生图 / 文生视频 / 图生视频 | 网页「图像 / Agnes」页 | 配 `AGNES_API_KEY`（或云端已配） | 低 |
 | 高质量自定义生图 / 视频 | 网页「图像 / 图生视频」页（切 ComfyUI） | 本地 ComfyUI + 显卡 + 模型 | 高 |
 
 - 普通文生图：本地部署完能联网直接玩，什么都不用装。
@@ -516,7 +521,7 @@ sudo systemctl enable --now nexus
 
 > 普通生图本地部署完直接就能玩；想要最高质量或自定义模型，才需要自己跑 ComfyUI。
 
-> 额度提醒：自托管免费档每天大致配额——对话 50 次、生图 10 次、视频 2 次、音乐 2 次（在 `backend/src/modules/billing.ts` 可调）。走公开中继模式（`AI_BOT_TOKEN`）时同样按此每日额度、需先 `nexusai register` 注册登录。
+> 额度提醒：自托管免费档每天大致配额——对话 50 次、生图 10 次、视频 2 次、音乐 2 次（在 `backend/src/modules/billing.ts` 可调）。中继模式是**另一套**额度，不沿用上面的免费档：走公开中继模式（`AI_BOT_TOKEN`）时按 `RELAY_DAILY_LIMIT`（默认 20 次/天）计，需先 `nexusai register` 注册登录（详见「附：站长中继模式」）。
 
 ---
 
@@ -592,7 +597,7 @@ nexusai            # 进对话，工具自动带上
 
 ### 12.3 在后端 / 网页用
 
-后端非流式对话也接入了 MCP 工具循环，可用 `GET /api/mcp/servers` 查看已连 server 与工具。默认没启用任何 server 时对线上零影响。
+后端非流式对话也接入了 MCP 工具循环，可用 `GET /api/servers` 查看已连 server 与工具（网关转发走 `/api/mcp`）。默认没启用任何 server 时对线上零影响。
 
 ---
 
@@ -691,26 +696,32 @@ NEXUS 自带一个 MCP 服务（`nexus-mcp`），能被 Claude Desktop、Cursor�
 
 形态 1 · 本地 stdio
 
-让客户端自己启动 `nexus-mcp` 进程。在客户端的 MCP 配置里加：
+让客户端自己启动 `nexus-mcp` 进程（**前提是先把 MCP 服务器构建好**：`pnpm -C nexus-mcp install && pnpm -C nexus-mcp build`）。在客户端的 MCP 配置里加：
 
 ```json
 {
   "mcpServers": {
     "nexus": {
       "command": "node",
-      "args": ["/项目路径/nexus-mcp/src/index.ts"],
+      "args": ["nexus-mcp/dist/index.js"],
       "env": { "TRANSPORT": "stdio" }
     }
   }
 }
 ```
 
+> Windows 用户把上面的相对路径改成绝对路径，例如 `C:/path/to/nexus-ai/nexus-mcp/dist/index.js`（或 `C:\\path\\to\\...`）。
+
 形态 2 · 远程 HTTP
 
-先单独起 MCP 服务：
+先单独起 MCP 服务（同样要先 `pnpm -C nexus-mcp install && pnpm -C nexus-mcp build`）：
 
 ```bash
-TRANSPORT=http PORT=8787 MCP_TOKEN=令牌 node nexus-mcp/src/index.ts
+# Linux / macOS
+TRANSPORT=http PORT=8787 MCP_TOKEN=令牌 node nexus-mcp/dist/index.js
+
+# Windows PowerShell（环境变量必须逐条前置，且路径用反斜杠或正斜杠）
+$env:TRANSPORT="http"; $env:PORT="8787"; $env:MCP_TOKEN="令牌"; node nexus-mcp\dist\index.js
 ```
 
 然后在客户端加（URL 型 MCP server）：
@@ -738,7 +749,7 @@ NEXUS 作为 MCP server 暴露的工具：`query_nexus_knowledge`（查本地知
 | 端点 | 方法 | 作用 |
 |------|------|------|
 | `/api/ai/v1/chat/completions` | POST | 对话（OpenAI 兼容，接法 A 用这个） |
-| `/api/chat` | POST | 网页端对话（流式 / 非流式） |
+| `/api/ai/chat` | POST | 网页端对话（流式 / 非流式，端点 `/api/ai/chat/stream`） |
 | `/api/image/generate` | POST | 生图（Pollinations） |
 | `/api/image/file/:name` | GET | 取生成的图 |
 | `/api/music/generate` | POST | 生成音乐 |
@@ -747,7 +758,7 @@ NEXUS 作为 MCP server 暴露的工具：`query_nexus_knowledge`（查本地知
 | `/api/agnes/image/generate` | POST | Agnes 文生图 / 图生图 |
 | `/api/agnes/video/generate` | POST | Agnes 文生视频 / 图生视频 |
 | `/api/mcp` | POST | MCP 网关（JSON-RPC，接法 B 用这个） |
-| `/api/mcp/servers` | GET | 查看已接 MCP |
+| `/api/servers`（后端聚合）/ `/api/mcp`（网关转发） | GET | 查看已接 MCP |
 
 ---
 
@@ -841,13 +852,14 @@ DATABASE_URL=postgresql://云端用户:云端密码@云端主机:5432/nexus
 nexusai update       # 自动拉最新代码 + 装依赖
 ```
 
-代码也会在每次启动时后台静默对齐最新版（每 6 小时最多一次，有本地改动时不动）。如果本机的 `nexusai` 根本没有 `update` 子命令，说明太旧了，整段复制粘贴下面四行重装一次即可（重装会保留数据 `nexus-data/` 和配置 `~/.nexusai/config.json`，Key 不用重填）：
+代码也会在每次启动时后台静默对齐最新版（每 6 小时最多一次，有本地改动时不动）。如果本机的 `nexusai` 根本没有 `update` 子命令，说明太旧了，照下面重装一次即可。重装**不会**丢数据：安装器在克隆前会自动把 `nexus-data/`（聊天记录、账号等）和 `backend/.env`（配置）改名备份，装完再还原，Key 不用重填。
 
 ```powershell
-cd $env:USERPROFILE\Desktop
-Remove-Item -Recurse -Force nexus-ai -ErrorAction SilentlyContinue
+# 在「项目所在目录的父目录」里执行（把下面的目录换成你实际放项目的那个目录，不要写死 Desktop）
+cd 你的项目父目录
 git clone --depth 1 https://github.com/2740354108/nexus-ai.git nexus-ai
-node nexus-ai\installer\installer.mjs
+cd nexus-ai
+node installer\installer.mjs
 ```
 
 ### 18.2 常见问题
@@ -919,6 +931,10 @@ cd backend && pnpm dev      # 后端 :3000
 cd frontend && pnpm dev     # 前端 :5173
 cd nexus-bot && pnpm start  # 机器人
 ```
+
+## 免责声明
+
+本项目仅供学习与研究使用。接入微信个人号 / OneBot（NapCat 等）/ 企业微信等方式涉及各平台的服务条款与协议风险，请自行评估并合规使用，风险自负；请勿用于任何违反平台规定或法律法规的场景。
 
 ## License
 

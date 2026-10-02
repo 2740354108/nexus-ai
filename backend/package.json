@@ -1,7 +1,7 @@
 {
-  "name": "spec-template-backend",
+  "name": "nexus-ai-backend",
   "version": "1.0.0",
-  "description": "Backend API server for full-stack web application template",
+  "description": "NEXUS AI 后端：对话、识图、生图、音乐、视频、账号、计费与 MCP 网关",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

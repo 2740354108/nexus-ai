@@ -135,8 +135,18 @@ function currentPeriod(): string {
 }
 
 export async function getPlan(planId: string) {
-  return queryOne<{ id: string; name: string; price_cents: number; interval: string; limits: any; features: any }>(
-    'SELECT id, name, price_cents, interval, limits, features FROM plans WHERE id = $1',
+  // 注意：必须查出 active 字段——下单校验会用到 plan.active，
+  // 之前漏选该列导致 plan.active 恒为 undefined，任何套餐都会被判为“已下架”。
+  return queryOne<{
+    id: string
+    name: string
+    price_cents: number
+    interval: string
+    limits: any
+    features: any
+    active: boolean
+  }>(
+    'SELECT id, name, price_cents, interval, limits, features, active FROM plans WHERE id = $1',
     [planId],
     'read'
   )

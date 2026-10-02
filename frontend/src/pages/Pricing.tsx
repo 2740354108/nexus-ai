@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   Check,
@@ -43,6 +43,13 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
   const [pay, setPay] = useState<{ orderId: string; amount: number; amountUsd?: number; channel: string } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 出错时把滚动条拉回顶部，否则提示在折叠区外，用户会以为按钮没反应
+  const showError = (msg: string) => {
+    setError(msg);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -76,7 +83,7 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
       if (r.payUrl) window.open(r.payUrl, "_blank", "noopener");
       setPay({ orderId: r.orderId, amount: r.amount, amountUsd: r.amountUsd, channel: r.channel });
     } catch (e: any) {
-      setError(e?.message || "下单失败");
+      showError(e?.message || "下单失败");
     }
   };
 
@@ -89,14 +96,14 @@ const Pricing = ({ onClose }: { onClose: () => void }) => {
       setPay(null);
       await load();
     } catch (e: any) {
-      setError(e?.message || "确认失败");
+      showError(e?.message || "确认失败");
     } finally {
       setConfirming(false);
     }
   };
 
   return (
-    <div className="absolute inset-0 z-50 overflow-y-auto bg-[#0a0a12] px-4 py-4">
+    <div ref={scrollRef} className="absolute inset-0 z-50 overflow-y-auto bg-[#0a0a12] px-4 py-4">
       <header className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">会员与用量</h2>
         <button

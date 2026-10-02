@@ -21,11 +21,6 @@ import { conversationsRouter } from './modules/conversations'
 import { mcpRouter } from './modules/mcp'
 import { billingRouter } from './modules/billing'
 import { configRouter } from './modules/config'
-// ============================================
-// Add your domain module imports here
-// ============================================
-// Example: Product Module
-// import { productRouter } from './modules/product.js'
 
 export const createApp = (): Application => {
   const app = express()
@@ -85,12 +80,6 @@ export const createApp = (): Application => {
   app.use(`${env.API_PREFIX}/billing`, billingRouter)
   // 云端用户配置（多租户隔离）
   app.use(`${env.API_PREFIX}/config`, configRouter)
-
-  // ============================================
-  // Add your domain module routes here
-  // ============================================
-  // Example: Product Module
-  // app.use(`${env.API_PREFIX}/products`, productRouter)
 
   // 前端路由兜底：非接口请求一律返回首页，交给 React Router 处理（支持刷新子页面）
   if (hasWebDist) {
