@@ -13,7 +13,7 @@ import { loadMcpServers, toOpenAiTools, callMcpToolByName } from './mcp-client.m
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const VERSION = '1.3.1'
+const VERSION = '1.3.2'
 // 仓库地址（后台自更新与 `update` 命令共用）
 const REPO_URL = 'https://github.com/2740354108/nexus-ai.git'
 // 新版代码标记：安装器用它判断本地是否真的更新成功（此字符串请勿删除）
@@ -311,15 +311,35 @@ function explainError(e) {
 
 /* ===== 终端霓虹样式（零依赖，纯 ANSI 转义码；非 TTY / 管道输入时自动关闭） ===== */
 const _TTY = !!process.stdout.isTTY
-const _e = (n) => (_TTY ? '\x1b[' + n + 'm' : '')
+// 终端颜色能力探测：不再假设「是 TTY 就支持真彩色」。
+// 某些 Windows 终端（经典 PowerShell / 旧 conhost）不解析真彩色转义码，
+// 会把颜色码尾部漏成可见的 "m"，所以这里跟随 Node 的能力判断，自动降级到 16 色或无色。
+// 支持 NO_COLOR 关闭、FORCE_COLOR=1/2/3 强制 16/256/真彩色。
+function _colorDepth() {
+  if (!_TTY) return 1
+  if (process.env.NO_COLOR) return 1
+  const f = process.env.FORCE_COLOR
+  if (f === '0' || f === 'false') return 1
+  if (f === '1' || f === 'true') return 4
+  if (f === '2') return 8
+  if (f === '3') return 24
+  try {
+    if (typeof process.stdout.getColorDepth === 'function') return process.stdout.getColorDepth()
+  } catch {}
+  return 4
+}
+const _DEPTH = _colorDepth()
+const _COLOR = _TTY && _DEPTH > 1 // 是否输出颜色
+const _TC = _TTY && _DEPTH >= 24 // 是否支持真彩色
+const _e = (n) => (_COLOR ? '\x1b[' + n + 'm' : '')
 const RESET = _e('0')
 const BOLD = _e('1')
 const DIM = _e('2')
-const C_CYAN = _e('38;2;103;232;249m') // #67e8f9
-const C_VIOLET = _e('38;2;196;181;253m') // #c4b5fd
-const C_GREEN = _e('38;2;110;231;183m')
-const C_GRAY = _e('38;2;148;163;184m')
-const paint = (s, code) => (_TTY ? code + s + RESET : s)
+const C_CYAN = _TC ? _e('38;2;103;232;249') : _e('36') // #67e8f9 → 亮青
+const C_VIOLET = _TC ? _e('38;2;196;181;253') : _e('35') // #c4b5fd → 亮紫
+const C_GREEN = _TC ? _e('38;2;110;231;183') : _e('32') // → 绿
+const C_GRAY = _TC ? _e('38;2;148;163;184') : _e('90') // → 灰
+const paint = (s, code) => (_COLOR && code ? code + s + RESET : s)
 const neon = {
   cyan: (s) => paint(s, C_CYAN),
   violet: (s) => paint(s, C_VIOLET),
