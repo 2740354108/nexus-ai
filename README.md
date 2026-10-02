@@ -1,7 +1,7 @@
 # NEXUS AI
 
 NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包含网页界面、桌面应用、终端对话和微信 / QQ / Telegram 机器人。
-对话、识图、生图、音乐、视频全部走公网模型接口（OpenRouter、MiniMax 等），数据默认存在本地内嵌数据库（零安装），也可直连外部 PostgreSQL / 云端数据库实现互通。
+对话、识图、生图、音乐、视频全部走公网模型接口（OpenRouter、MiniMax 等），数据默认存在本地内嵌数据库，也可直连外部 PostgreSQL / 云端数据库实现互通。
 
 > 本项目开源免费。模型调用需要你自己的 API Key（OpenRouter 等），与部署方式无关。
 
@@ -12,7 +12,7 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 1. [功能特性](#1-功能特性)
 2. [架构](#2-架构)
 3. [开始前要准备什么](#3-开始前要准备什么)
-4. [快速开始（推荐）：npx 直接从 GitHub 安装](#4-快速开始推荐npx-直接从-github-安装)
+4. [快速开始：npx 直接从 GitHub 安装](#4-快速开始npx-直接从-github-安装)
 5. [手动安装](#5-手动安装)
 6. [第一次配置：填 Key、选模型](#6-第一次配置填-key选模型)
 7. [怎么用：四个入口](#7-怎么用四个入口)
@@ -37,19 +37,19 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 
 不只是聊天，而是一整套能力：
 
-- **对话 + 识图**：网页 / 桌面 / 终端 / 机器人，多轮记忆，能看懂图片
-- **终端对话** `nexusai chat`：想问什么直接敲，支持多轮记忆、发图识图（`@图片路径`，可一次多张）
-- **桌面应用** `nexusai`：GUI 窗口，自动拉起后端与前端
-- **网页界面** `nexusai serve`：浏览器访问 `http://localhost:5173`，功能最全
-- **手机 App**：Capacitor 打包的安卓端，形态与网页一致
-- **机器人接入**：微信、QQ、Telegram、Discord、企业微信（按需开启）
-- **文生图 / 图生图**：网页「图像 / Agnes」页，联网即开箱即用
-- **文生视频 / 图生视频**：云端免费接口，或本地 ComfyUI
-- **AI 音乐**：一句话生成完整曲目
-- **自动化办公（Workflow）**：链式任务，结果可回传飞书
-- **本地模型接入**：Ollama、LM Studio、vLLM 直接接
-- **MCP 聚合**：CLI + 后端共享配置，接多个厂商 / 本地 MCP 工具，对话时自动调用
-- **本地存储 / 云端互通**：默认存本地内嵌数据库（零安装）；也可直连外部 PostgreSQL / 云端数据库，两边数据一致
+- 对话 + 识图：网页 / 桌面 / 终端 / 机器人，多轮记忆，能看懂图片
+- 终端对话 `nexusai chat`：想问什么直接敲，支持多轮记忆、发图识图（`@图片路径`，可一次多张）
+- 桌面应用 `nexusai`：GUI 窗口，自动拉起后端与前端
+- 网页界面 `nexusai serve`：浏览器访问 `http://localhost:5173`，功能最全
+- 手机 App：Capacitor 打包的安卓端，形态与网页一致
+- 机器人接入：微信、QQ、Telegram、Discord、企业微信（按需开启）
+- 文生图 / 图生图：网页「图像 / Agnes」页，联网即可用
+- 文生视频 / 图生视频：云端免费接口，或本地 ComfyUI
+- AI 音乐：一句话生成完整曲目
+- 自动化办公（Workflow）：链式任务，结果可回传飞书
+- 本地模型接入：Ollama、LM Studio、vLLM 直接接
+- MCP 聚合：CLI + 后端共享配置，接多个厂商 / 本地 MCP 工具，对话时自动调用
+- 本地存储 / 云端互通：默认存本地内嵌数据库；也可直连外部 PostgreSQL / 云端数据库，两边数据一致
 
 ## 2. 架构
 
@@ -73,7 +73,7 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
           │
           ▼
 ┌─ 支撑层
-│  存储：PGlite 内嵌（默认，零安装）· TCB 云 · 外部 PostgreSQL
+│  存储：PGlite 内嵌 · TCB 云 · 外部 PostgreSQL
 │  模型：OpenRouter（对话·识图·思考）· Agnes（图/视频）· MiniMax（音乐）· ComfyUI（本地视频）
 │  能力：nexus-mcp（多 MCP 工具聚合）· nexus-up（后端与机器人常驻守护）
 └────────────────────────────────────
@@ -91,7 +91,7 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 | `backend/web/` | 前端构建产物，由后端一并托管（单端口部署时） | — | 复用 `3000` |
 | `nexus-bot/` | 社交平台机器人网关 | TypeScript + tsx | `3939` |
 | `nexus-mcp/` | 自研 MCP 服务器（知识库 / 能力清单 / nexus_chat） | @modelcontextprotocol/sdk | `8787` / stdio |
-| `installer/` | npm 安装器 `nexus-ai`，用于 `npx` 一键安装 | 纯 Node | — |
+| `installer/` | npm 安装器 `nexus-ai`，用于 `npx` 安装 | 纯 Node | — |
 | `scripts/nexus-up.sh` | 后端 + 机器人双进程常驻守护 | Bash | — |
 | `scripts/nexus.service` | 开机自启样例 | systemd | — |
 
@@ -103,7 +103,7 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 |------|------|------|
 | `/api` | `system` | 健康检查、系统信息 |
 | `/api/ai` | `ai` | 对话（`/chat`、`/chat/stream`、`/v1/*` OpenAI 兼容），多模型链自动切换 |
-| `/api/image` | `image` | 文生图（Pollinations，免费开箱即用） |
+| `/api/image` | `image` | 文生图（Pollinations，免费） |
 | `/api/agnes` | `agnes` | 文生图 / 图生图 / 文生视频 / 图生视频 |
 | `/api/music` | `music` | 音乐生成（MiniMax / Suno / HuggingFace / Replicate / ACE） |
 | `/api/video` | `video` | 图生视频 / 文生视频（ComfyUI） |
@@ -123,25 +123,25 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 
 **C · 社交机器人**　微信 / QQ / Telegram / Discord / 企业微信 → `nexus-bot`(`3939`) 统一成标准消息 → POST 后端 `/api/ai/v1/chat/completions` → 回复按原路回传平台。
 
-**D · 外部应用接入**　任何第三方应用 → 后端 OpenAI 兼容接口 `http://localhost:3000/api/ai/v1/chat/completions`（带 `AI_BOT_TOKEN` 或用户 Key 鉴权）→ 模型层。等于把你的模型能力开放成一整套标准接口。
+**D · 外部应用接入**　任何第三方应用 → 后端 OpenAI 兼容接口 `http://localhost:3000/api/ai/v1/chat/completions`（带 `AI_BOT_TOKEN` 或用户 Key 鉴权）→ 模型层。也就是把你的模型能力开放成一整套标准接口。
 
 ### 存储层
 
 三种模式，改一个 `DB_MODE` 即可切换（详见「第一次配置」）：
 
-- **PGlite**（默认）：内嵌的 PostgreSQL（纯 WASM），**零安装**，数据落在本地 `nexus-data/` 目录
-- **TCB 云端**：托管 PostgreSQL，服务器自动配置
-- **外部 PostgreSQL**：保持 `DB_MODE=local` 并填 `DATABASE_URL`，即可与云端共用同一份数据，两边互通
+- 默认用 PGlite：内嵌的 PostgreSQL（纯 WASM），数据落在本地 `nexus-data/` 目录
+- TCB 云端：托管 PostgreSQL，服务器自动配置
+- 外部 PostgreSQL：保持 `DB_MODE=local` 并填 `DATABASE_URL`，即可与云端共用同一份数据，两边互通
 
 ### 模型层
 
-对话默认走 **OpenRouter 的 OpenAI 兼容接口**，可换 DeepSeek / GLM / Kimi 等任意兼容服务。后端维护**多模型链**：对话、识图、深度思考各有一条链，主模型被限流或下架时自动切到下一个；CLI 侧同样会自动换用可用模型并记住选择。
+对话默认走 OpenRouter 的 OpenAI 兼容接口，可换 DeepSeek / GLM / Kimi 等任意兼容服务。后端维护多模型链：对话、识图、深度思考各有一条链，主模型被限流或下架时自动切到下一个；CLI 侧同样会自动换用可用模型并记住选择。
 
 ### 能力层与运维层
 
-- **`nexus-mcp`**：既能作为独立 MCP 服务器对外提供工具，也能被后端的 `/api/mcp` 网关转发
-- **多 MCP 聚合**：CLI 与后端共享同一份 `~/.nexusai/mcp-servers.json`，可同时接入多个本地进程（stdio）或远程（HTTP）MCP server，工具名自动加前缀去重
-- **`nexus-up`**：把后端和机器人做成后台常驻，谁崩了自动拉起，附 `systemd` 配置可开机自启
+- `nexus-mcp`：既能作为独立 MCP 服务器对外提供工具，也能被后端的 `/api/mcp` 网关转发
+- 多 MCP 聚合：CLI 与后端共享同一份 `~/.nexusai/mcp-servers.json`，可同时接入多个本地进程（stdio）或远程（HTTP）MCP server，工具名自动加前缀去重
+- `nexus-up`：把后端和机器人做成后台常驻，谁崩了自动拉起，附 `systemd` 配置可开机自启
 
 ### 技术栈
 
@@ -175,26 +175,26 @@ NEXUS AI 是个多模态助手，能跑在自己的电脑或服务器上，包�
 
 需要准备的东西不多：
 
-1. **一台能联网的电脑或服务器**（Windows / macOS / Linux 都行）。
-   - 想 24 小时在线当机器人服务器 → 用一台**云电脑**（本机一休眠机器人就掉线）。
-2. **Git**（用来从 GitHub 拉代码）。没装的去 https://git-scm.com 装。
-3. **Node.js ≥ 18** 和 **pnpm**。
+1. 一台能联网的电脑或服务器（Windows / macOS / Linux 都行）。
+   - 想 24 小时在线当机器人服务器 → 用一台云电脑（本机一休眠机器人就掉线）。
+2. Git（用来从 GitHub 拉代码）。没装的去 https://git-scm.com 装。
+3. Node.js ≥ 18 和 pnpm。
    - 装 Node：https://nodejs.org （选 LTS）
    - 装 pnpm：装好 Node 后，命令行跑 `npm install -g pnpm`
-4. **一个 AI Key**（下面任意一家都支持，用你手头有的那家就行）。
-   - 想省事 → **OpenRouter**：https://openrouter.ai/keys 注册就有免费额度。
-   - 已经有别家 Key → **OpenAI / DeepSeek / 智谱 GLM / 通义千问 / Kimi / 硅基流动** 都能直接用，不必为了跑这个项目专门去注册 OpenRouter。
+4. 一个 AI Key（下面任意一家都支持，用你手头有的那家就行）。
+   - 想省事 → OpenRouter：https://openrouter.ai/keys 注册就有免费额度。
+   - 已经有别家 Key → OpenAI / DeepSeek / 智谱 GLM / 通义千问 / Kimi / 硅基流动 都能直接用，不必为了跑这个项目专门去注册 OpenRouter。
    - 这就是后面要填的 `AI_API_KEY`。
-5. **可选**：
-   - 想跑**高质量本地生图 / 生视频** → 需要一张显卡 + 自己部署 ComfyUI（见「进阶一」）。
-   - 想接**本地大模型**（Ollama 等）→ 本机再装个 Ollama 即可。
-   - 想开**微信 / QQ 机器人** → 需要对应平台的账号 / 审核通过的机器人（见「机器人」一节）。
+5. 可选：
+   - 想跑高质量本地生图 / 生视频 → 需要一张显卡 + 自己部署 ComfyUI（见「进阶一」）。
+   - 想接本地大模型（Ollama 等）→ 本机再装个 Ollama 即可。
+   - 想开微信 / QQ 机器人 → 需要对应平台的账号 / 审核通过的机器人（见「机器人」一节）。
 
-> 纯断网是跑不了的，因为默认模型在云端。接了本地模型（Ollama）后可以不完全依赖外网，但配置阶段还是要联网。
+> 纯断网是跑不了的，因为默认模型在云端。接了本地模型（Ollama）后可以不依赖外网，但配置阶段还是要联网。
 
 ---
 
-## 4. 快速开始（推荐）：npx 直接从 GitHub 安装
+## 4. 快速开始：npx 直接从 GitHub 安装
 
 在装好 Node.js 的电脑上，一行命令即可——直接从 GitHub 仓库下载安装，不用手动 git clone：
 
@@ -206,7 +206,7 @@ npx github:2740354108/nexus-ai
 
 - 检查 / 安装 pnpm
 - 从 GitHub 克隆项目到当前目录的 `nexus-ai/`
-- 安装依赖（内含**内嵌数据库 PGlite，零安装**，不用装任何数据库软件）
+- 安装依赖（内含内嵌数据库 PGlite，不用装任何数据库软件）
 - 生成配置、注册 `nexusai` 全局命令
 
 装完验证一下：重开一个终端，敲
@@ -217,7 +217,7 @@ nexusai help
 
 能看到命令列表就成功了。
 
-> 若终端提示「无法将 `nexusai` 项识别为 cmdlet / command not found」，说明全局命令没进 PATH：**重开一个终端窗口**再试；仍不行就进项目目录用 `pnpm nexusai chat`，效果完全一样。
+> 若终端提示「无法将 `nexusai` 项识别为 cmdlet / command not found」，说明全局命令没进 PATH：重开一个终端窗口再试；仍不行就进项目目录用 `pnpm nexusai chat`，效果一样。
 
 想装到指定目录：
 
@@ -227,7 +227,7 @@ npx github:2740354108/nexus-ai my-folder
 
 > `npx github:` 形式首次运行会把桌面打包工具（Electron）一起装上，属正常一次性下载，稍大；若想更轻量，可改用下面的手动安装。
 
-### 另一种方式：先发布 npm 安装器（更快）
+### 另一种方式：先发布 npm 安装器，安装更快
 
 如果你希望别人用更短的 `npx nexus-ai`（不拉桌面构建依赖），可把 `installer/` 这个小包发布到 npm：
 
@@ -235,7 +235,7 @@ npx github:2740354108/nexus-ai my-folder
 cd installer && npm publish
 ```
 
-之后别人用 `npx nexus-ai` 即可（效果与 `npx github:` 完全一致，只是安装器本身来自 npm）。
+之后别人用 `npx nexus-ai` 即可（效果与 `npx github:` 一致，只是安装器本身来自 npm）。
 
 > 无论哪种方式，最终装的都是同一个 GitHub 项目。`installer/installer.mjs` 里的 `REPO` 作为兜底地址，一般不用改。
 
@@ -283,14 +283,14 @@ nexusai setup
 
 它会问两种用法，选一个：
 
-- **用法 1（推荐，自带 Key）**：选「用自己的 Key」，再挑一家平台（见下表），把该平台的 Key 粘进去。向导会自动带出对应的服务地址和常用模型，并现场验证一次，通过才保存。无限流，Key 只存在本地。
-- **用法 2（连中继）**：如果知道某个站长部署的中继地址，选这个填进去，可免自己申请 Key（但有每日额度）。自己没部署中继**不要**选这个。
+- 用法 1（自带 Key）：选「用自己的 Key」，再挑一家平台（见下表），把该平台的 Key 粘进去。向导会自动带出对应的服务地址和常用模型，并现场验证一次，通过才保存。无限流，Key 只存在本地。
+- 用法 2（连中继）：如果知道某个站长部署的中继地址，选这个填进去，可免自己申请 Key（但有每日额度）。自己没部署中继不要选这个。
 
-**向导里可选的平台**（地址、模型都由向导自动填好，你只出 Key）：
+向导里可选的平台，地址和模型都由向导自动填好，你只出 Key：
 
 | 选哪家 | 服务地址 | Key 去哪拿 |
 |--------|----------|-----------|
-| OpenRouter（新手推荐） | `https://openrouter.ai/api/v1` | https://openrouter.ai/keys （有免费额度） |
+| OpenRouter | `https://openrouter.ai/api/v1` | https://openrouter.ai/keys （有免费额度） |
 | OpenAI 官方 | `https://api.openai.com/v1` | https://platform.openai.com/api-keys |
 | DeepSeek | `https://api.deepseek.com/v1` | https://platform.deepseek.com/api_keys |
 | 月之暗面 Kimi | `https://api.moonshot.cn/v1` | https://platform.moonshot.cn/console/api-keys |
@@ -318,7 +318,7 @@ nexusai setup
 | `AI_MODEL` | 对话主模型 | 免费模型，会随上下架变化 |
 | `AI_MODEL_THINK` | 深度思考（推理）模型 | deepseek-r1:free |
 | `AI_VISION_MODEL` / `AI_VISION_FALLBACKS` | 识图模型链（发图片时自动切） | 免费视觉模型 |
-| `DB_MODE` | `local`（默认，内嵌数据库零安装）或 `cloud`（云端 TCB） | local |
+| `DB_MODE` | `local`（默认，内嵌数据库）或 `cloud`（云端 TCB） | local |
 | `NEXUS_DATA_DIR` | 内嵌数据库存放目录 | `./nexus-data` |
 | `DATABASE_URL` | 可选，填 `postgresql://…` 则改用外部 PostgreSQL（与云端共用数据） | 空 |
 | `AGNES_API_BASE` | Agnes 多模态服务地址（与下一项配套） | `https://apihub.agnes-ai.cn/v1` |
@@ -329,15 +329,15 @@ nexusai setup
 
 AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也可直接用你已有的 OpenAI / DeepSeek / 智谱 / 通义 / Kimi / 硅基流动 Key —— 把上表的服务地址填进 `AI_API_BASE` 即可（`nexusai setup` 会自动填）。
 
-> 仓库默认**不内置任何可用服务器地址**，装完须配置一次。如果看到 `Hostname/IP does not match certificate` 报错，说明地址填的是示例占位域名，运行 `nexusai setup` 重新填写即可。
+> 仓库默认不内置任何可用服务器地址，装完须配置一次。如果看到 `Hostname/IP does not match certificate` 报错，说明地址填的是示例占位域名，运行 `nexusai setup` 重新填写即可。
 >
-> 免费模型会随时上下架，CLI / 后端都做了**自动切换当前可用模型**，一般不用手改模型名。
+> 免费模型会随时上下架，CLI / 后端都会自动切换当前可用模型，一般不用手改模型名。
 
 ### 6.3 前端「设置页」（网页 / 手机端对话用）
 
-网页端对话默认走**前端设置页里填的接口与 Key**（前端直连 OpenAI 兼容服务），不是走后端。打开网页 → 设置，可以配：
+网页端对话默认走前端设置页里填的接口与 Key（前端直连 OpenAI 兼容服务），不是走后端。打开网页 → 设置，可以配：
 
-- `chatApiBase` + `openrouterKey` + `chatModel`：对话接口地址、密钥、模型名。字段名叫 `openrouterKey` 是历史原因，填**任意平台**的 Key 都行（配合 `chatApiBase` 指到那家平台）；默认 OpenRouter，也可改成 Ollama / LM Studio / vLLM
+- `chatApiBase` + `openrouterKey` + `chatModel`：对话接口地址、密钥、模型名。字段名叫 `openrouterKey` 是历史原因，填任意平台的 Key 都行（配合 `chatApiBase` 指到那家平台）；默认 OpenRouter，也可改成 Ollama / LM Studio / vLLM
 - `chatModelThink`：深度思考模型
 - `pollinationsToken`：生图令牌（不填也能画）
 - `comfyUrl` / `comfyCheckpoint` / `comfyUnet` / `comfyVae` / `comfyClipVision`：本地 ComfyUI 生图 / 视频
@@ -345,7 +345,7 @@ AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也�
 - `feishuWebhook`：飞书回传（见「飞书回传」）
 - `routerEndpoint` / `routerModel` / `routerApiKey`：备用模型，主模型可自动把子任务转给它
 
-> 两套配置的区别：**后端 `.env`** 是「服务端」用的（机器人、对外接口、音乐 / 视频生成）；**前端设置页**是「网页 / 手机端自己直连」用的。想让网页端直接调本机的 Ollama，就改前端设置页；想让机器人和对外接口用某个模型，就改后端 `.env`。
+> 两套配置的区别：后端 `.env` 是「服务端」用的（机器人、对外接口、音乐 / 视频生成）；前端设置页是「网页 / 手机端自己直连」用的。想让网页端直接调本机的 Ollama，就改前端设置页；想让机器人和对外接口用某个模型，就改后端 `.env`。
 
 ---
 
@@ -357,15 +357,15 @@ AI 密钥获取：OpenRouter 可免费申请 https://openrouter.ai/keys ；也�
 nexusai serve
 ```
 
-浏览器打开 **http://localhost:5173**。里面的标签页大致有：
+浏览器打开 http://localhost:5173 。里面的标签页大致有：
 
-- **智能对话**：聊天 + 发图识图 + 深度思考 / 联网开关
-- **AI 音乐**：一句话生成曲目
-- **图生视频**：上传一张图让它动起来（或文生视频）
-- **图像 / 绘图**：文生图、切 ComfyUI 高质量
-- **Agnes AI**：免费多模态，文生图 / 图生图 / 文生视频 / 图生视频合一
-- **自动化**：Workflow 链式任务 + 飞书回传（见「链式自动化」）
-- **我的空间 / 设置**：历史、配置、模型切换
+- 智能对话：聊天 + 发图识图 + 深度思考 / 联网开关
+- AI 音乐：一句话生成曲目
+- 图生视频：上传一张图让它动起来（或文生视频）
+- 图像 / 绘图：文生图、切 ComfyUI 高质量
+- Agnes AI：免费多模态，文生图 / 图生图 / 文生视频 / 图生视频合一
+- 自动化：Workflow 链式任务 + 飞书回传（见「链式自动化」）
+- 我的空间 / 设置：历史、配置、模型切换
 
 ### 7.2 终端 CLI
 
@@ -422,9 +422,9 @@ pnpm install && pnpm pack:win    # 生成 dist-electron/ 下的 exe（必须在 
 
 ## 8. 机器人：把 AI 请进微信群 / QQ 群
 
-机器人是一个**独立程序 `nexus-bot`**，它自己不聪明，只是把微信 / QQ 等平台的消息转给**后端（localhost:3000）**去算：
+机器人是一个独立程序 `nexus-bot`，它自己不聪明，只是把微信 / QQ 等平台的消息转给后端（localhost:3000）去算：
 
-> **机器人能不能用，取决于后端在不在跑。** 后端没起，机器人就「连不上后端」没声。
+> 机器人能不能用，取决于后端在不在跑。后端没起，机器人就「连不上后端」没声。
 
 ### 8.1 配置 `nexus-bot/.env`
 
@@ -432,10 +432,10 @@ pnpm install && pnpm pack:win    # 生成 dist-electron/ 下的 exe（必须在 
 
 | 变量 | 作用 |
 |------|------|
-| `NEXUS_API_BASE` | 后端地址，**默认 `http://localhost:3000/api/ai/v1`**（和后端同机填这个） |
+| `NEXUS_API_BASE` | 后端地址，默认 `http://localhost:3000/api/ai/v1`，和后端同机就填这个 |
 | `OPENROUTER_API_KEY` / `BOT_MODEL` | 机器人直连模型用（也可只靠后端，留空也行） |
-| `ENABLE_TELEGRAM` + `TELEGRAM_BOT_TOKEN` | Telegram（最简单，填 Token 即可，本地就能跑） |
-| `ENABLE_DISCORD` + `DISCORD_BOT_TOKEN` | Discord（填 Token） |
+| `ENABLE_TELEGRAM` + `TELEGRAM_BOT_TOKEN` | Telegram，填 Token 即可，本地就能跑 |
+| `ENABLE_DISCORD` + `DISCORD_BOT_TOKEN` | Discord，填 Token |
 | `ENABLE_QQ` + `QQ_BOT_APPID` / `QQ_BOT_TOKEN` / `QQ_BOT_SECRET` | QQ 官方机器人（需开放平台审核发布） |
 | `ENABLE_ONEBOT` + `ONEBOT_WS_URL` | OneBot / NapCat（挂在自己 QQ 上，能收全部消息，无 5 秒限制） |
 | `ENABLE_WECOM` + 企业微信参数 | 企业微信（群机器人 webhook 或企业应用） |
@@ -443,12 +443,12 @@ pnpm install && pnpm pack:win    # 生成 dist-electron/ 下的 exe（必须在 
 | `BOT_SYSTEM_PROMPT` | 自定义机器人人设（不填用默认） |
 | `BOT_HEALTH_PORT` | 健康检查端口，默认 3939 |
 
-### 8.2 各平台怎么开（由简到繁）
+### 8.2 各平台怎么开
 
-- **Telegram / Discord**：去对应平台申请 Bot Token，填上 `ENABLE_*` 和 Token，本地就能跑，不需要公网。
-- **QQ 官方机器人**：去 QQ 开放平台创建机器人，拿到 appid / token / secret，填好。**必须审核发布后才会推送消息**。
-- **OneBot（NapCat / LLOneBot）**：在自己登录的 QQ 上挂一个 OneBot 框架（如 NapCat），让它暴露 WebSocket（默认 `ws://127.0.0.1:3001`），机器人填 `ENABLE_ONEBOT=true` 即可。**优点**：能收群里所有消息、没有官方机器人的 5 秒被动回复限制。
-- **企业微信 / 微信小程序**：按需填企业微信或微信小程序的参数。
+- Telegram / Discord：去对应平台申请 Bot Token，填上 `ENABLE_*` 和 Token，本地就能跑，不需要公网。
+- QQ 官方机器人：去 QQ 开放平台创建机器人，拿到 appid / token / secret，填好。必须审核发布后才会推送消息。
+- OneBot（NapCat / LLOneBot）：在自己登录的 QQ 上挂一个 OneBot 框架（如 NapCat），让它暴露 WebSocket（默认 `ws://127.0.0.1:3001`），机器人填 `ENABLE_ONEBOT=true` 即可。能收群里所有消息、没有官方机器人的 5 秒被动回复限制。
+- 企业微信 / 微信小程序：按需填企业微信或微信小程序的参数。
 
 启动机器人：
 
@@ -458,24 +458,16 @@ cd nexus-bot && pnpm start
 
 ### 8.3 让机器人不掉线
 
-机器人依赖后端常驻，见「常驻运行」。最简方案：在同一台机器用 `nexusai up` 把后端 + 机器人一起守护起来，谁崩了自动重启。
+机器人依赖后端常驻，见「常驻运行」。最简单的方式是在同一台机器用 `nexusai up` 把后端 + 机器人一起守护起来，谁崩了自动重启。
 
 ### 8.4 常见机器人故障
 
-- **「连不上后端」**：后端没起，或端口被抢。先用 `nexusai up status` 看后端在不在跑。
-- **「动不动没声」**：
+- 「连不上后端」：后端没起，或端口被抢。先用 `nexusai up status` 看后端在不在跑。
+- 「动不动没声」：
   1. 后端没常驻（用「常驻运行」解决）；
-  2. QQ 官方机器人的「被动回复 5 秒窗口」——模型一慢，回复超时会被吞（换 OneBot 方案可根治）；
+  2. QQ 官方机器人的「被动回复 5 秒窗口」——模型一慢，回复超时会被吞（换 OneBot 方案可解决）；
   3. 免费模型偶发限流。
-- **图片收不到**：QQ 官方机器人只能看到「@它那条消息」里带的图；OneBot 没有这个限制。
-
-### 8.5 微信陪伴搭子「阿枢」（可选）
-
-微信通道（iLink / ClawBot 扫码那条）默认启用一个专属陪伴人设「阿枢」：它记得你做过的事、你说过的心情，你报喜时先真诚具体地祝贺、低落时先接住情绪再谈技术。
-
-- **长期记忆**：存在 `~/.nexusai/companion-memory.json`，跨重启保留；想让它「忘掉」什么，删这个文件即可（注意 `/reset` 只清当轮对话，不清长期记忆）。
-- **想换人设**：在 `nexus-bot/.env` 填 `WECHAT_SYSTEM_PROMPT=…`，记忆与报喜逻辑不受影响。
-- **只作用于微信**：QQ / Telegram / Discord 等其它平台不受影响。
+- 图片收不到：QQ 官方机器人只能看到「@它那条消息」里带的图；OneBot 没有这个限制。
 
 ---
 
@@ -483,7 +475,7 @@ cd nexus-bot && pnpm start
 
 适合：云电脑 / 服务器上 24 小时挂着，让机器人保持在线。
 
-项目里自带守护脚本 `scripts/nexus-up.sh`（纯 bash，零依赖），它会**同时守护后端和机器人**，任何一个崩了 2 秒后自动重启。
+项目里自带守护脚本 `scripts/nexus-up.sh`（纯 bash，零依赖），它会同时守护后端和机器人，任何一个崩了 2 秒后自动重启。
 
 ```bash
 # 在项目根目录
@@ -495,7 +487,7 @@ nexusai up restart         # 重启
 
 日志落在 `.nexus-runtime/logs/`（backend.log / bot.log），出问题一眼能看到。
 
-**云电脑开机自启**（Linux）：把 `scripts/nexus.service` 放到 `/etc/systemd/system/nexus.service`，改里面的 `WorkingDirectory`（项目路径）和 `User`，然后：
+云电脑开机自启（Linux）：把 `scripts/nexus.service` 放到 `/etc/systemd/system/nexus.service`，改里面的 `WorkingDirectory`（项目路径）和 `User`，然后：
 
 ```bash
 sudo systemctl daemon-reload
@@ -504,13 +496,13 @@ sudo systemctl enable --now nexus
 
 之后云电脑重启会自动拉起，机器人不再掉线。
 
-> 注意：机器人和后端要在**同一台机器**跑（脚本就是这么干的），这样机器人连 `localhost:3000` 才稳。
+> 注意：机器人和后端要在同一台机器跑（脚本就是这么干的），这样机器人连 `localhost:3000` 才稳。
 
 ---
 
 ## 10. 进阶一：生图 / 生视频
 
-生图 / 生视频分三档，对硬件要求完全不同：
+生图 / 生视频分三档，对硬件要求各不相同：
 
 | 能力 | 入口 | 需要什么 | 难度 |
 |------|------|----------|------|
@@ -518,19 +510,19 @@ sudo systemctl enable --now nexus
 | 图生图 / 文生视频 / 图生视频 | 网页「Agnes」页 | 配 `AGNES_API_KEY`（或云端已配） | 低 |
 | 高质量自定义生图 / 视频 | 网页「图像 / 图生视频」页（切 ComfyUI） | 本地 ComfyUI + 显卡 + 模型 | 高 |
 
-- **普通文生图**：本地部署完能联网直接玩，什么都不用装。
-- **Agnes 多模态**：在后端 `.env` 配 `AGNES_API_KEY`（没有的话那一块不可用，但不影响对话和文生图）。
-- **本地 ComfyUI（高质量）**：自己部署 ComfyUI（默认 `http://localhost:8188`），在前端设置页填 `comfyUrl` 和模型名（`comfyCheckpoint` / `comfyUnet` / `comfyVae` / `comfyClipVision`）。视频还需要装 ComfyUI 的视频相关节点（如 `ComfyUI-VideoHelperSuite`）。
+- 普通文生图：本地部署完能联网直接玩，什么都不用装。
+- Agnes 多模态：在后端 `.env` 配 `AGNES_API_KEY`（没有的话那一块不可用，但不影响对话和文生图）。
+- 本地 ComfyUI（高质量）：自己部署 ComfyUI（默认 `http://localhost:8188`），在前端设置页填 `comfyUrl` 和模型名（`comfyCheckpoint` / `comfyUnet` / `comfyVae` / `comfyClipVision`）。视频还需要装 ComfyUI 的视频相关节点（如 `ComfyUI-VideoHelperSuite`）。
 
 > 普通生图本地部署完直接就能玩；想要最高质量或自定义模型，才需要自己跑 ComfyUI。
 
-> **额度提醒**：自托管免费档每天大致配额——对话 50 次、生图 10 次、视频 2 次、音乐 2 次（在 `backend/src/modules/billing.ts` 可调）。走公开中继模式（`AI_BOT_TOKEN`）时同样按此每日额度、需先 `nexusai register` 注册登录。
+> 额度提醒：自托管免费档每天大致配额——对话 50 次、生图 10 次、视频 2 次、音乐 2 次（在 `backend/src/modules/billing.ts` 可调）。走公开中继模式（`AI_BOT_TOKEN`）时同样按此每日额度、需先 `nexusai register` 注册登录。
 
 ---
 
 ## 11. 进阶二：本地部署模型
 
-完全可以不依赖云端模型，用自己电脑上的开源模型（Ollama / LM Studio / vLLM）。
+可以不依赖云端模型，用自己电脑上的开源模型（Ollama / LM Studio / vLLM）。
 
 ### 11.1 支持的服务
 
@@ -586,8 +578,8 @@ MCP（Model Context Protocol）能把「文件系统、GitHub、各家厂商工�
 
 两种形态都支持：
 
-- **stdio（本地进程型）**：`command` + `args` 启动，如 filesystem、GitHub。
-- **http（远程型）**：给个 `url` + token 就能连厂商云 MCP。
+- stdio（本地进程型）：`command` + `args` 启动，如 filesystem、GitHub。
+- http（远程型）：给个 `url` + token 就能连厂商云 MCP。
 
 ### 12.2 在 CLI 里用
 
@@ -608,8 +600,8 @@ nexusai            # 进对话，工具自动带上
 
 NEXUS 后端就是一个 OpenAI 兼容网关 + 一个 MCP 服务。而市面上现代 AI 客户端基本只认这两类协议——所以 NEXUS 几乎能塞进任何工具当「大脑」。
 
-- **接法 A · OpenAI 兼容（最通用，覆盖约 90% 工具）**：在对方工具里把 Base URL 指向 NEXUS，任何认 OpenAI 格式的客户端都能直接用。
-- **接法 B · MCP（让 Claude Desktop / Cursor 等把 NEXUS 当「工具」调用）**：对方支持 MCP 时，把 NEXUS 注册成一个 MCP server 即可。
+- 接法 A · OpenAI 兼容（最通用，覆盖约 90% 工具）：在对方工具里把 Base URL 指向 NEXUS，任何认 OpenAI 格式的客户端都能直接用。
+- 接法 B · MCP（让 Claude Desktop / Cursor 等把 NEXUS 当「工具」调用）：对方支持 MCP 时，把 NEXUS 注册成一个 MCP server 即可。
 
 > 不管用哪种，先确认后端在跑：`nexusai up` 或 `nexusai serve`（端口 3000）。
 
@@ -626,8 +618,8 @@ http://<服务器IP或域名>:3000/api/ai/v1  # 别的机器 / 云电脑
 
 | 字段 | 填什么 |
 |------|--------|
-| API Key | **任意非空字符串**（本机直连不校验）；若开了中继模式（`AI_BOT_TOKEN`），就填那个 token |
-| Model | **任意**（实际模型由服务端模型链决定，主模型被限流会自动换下一个） |
+| API Key | 任意非空字符串（本机直连不校验）；若开了中继模式（`AI_BOT_TOKEN`），就填那个 token |
+| Model | 任意（实际模型由服务端模型链决定，主模型被限流会自动换下一个） |
 
 请求体就是标准 OpenAI 格式：
 
@@ -656,7 +648,7 @@ print(c.chat.completions.create(model="nexus", messages=[{"role":"user","content
 
 ### 13.2 哪些工具走 OpenAI 兼容就能接
 
-下面是市面上主流、确认支持自定义 OpenAI 兼容 Base URL 的工具（不管字段叫 Base URL 还是 API Base，本质一样）。把这些工具的地址填成 `http://localhost:3000/api/ai/v1` 即可：
+下面是市面上主流、确认支持自定义 OpenAI 兼容 Base URL 的工具（不管字段叫 Base URL 还是 API Base，是一样的）。把这些工具的地址填成 `http://localhost:3000/api/ai/v1` 即可：
 
 | 工具 / 应用 | 类型 | 配置入口（大致位置） |
 |------------|------|---------------------|
@@ -687,17 +679,17 @@ print(c.chat.completions.create(model="nexus", messages=[{"role":"user","content
 
 ### 13.3 重点三家怎么填
 
-- **WorkBuddy（CodeBuddy）**：`设置 → 模型 → 新建自定义模型`，类型选**「OpenAI 兼容」**；Base URL 填 `http://localhost:3000/api/ai/v1`，API Key 填任意非空，Model 随便写。它**同时支持 MCP**——`连接器 → 自定义连接器 → MCP`，URL 填 `http://localhost:8787/mcp`。
-- **Hermes Agent**：启动或设置里选 `Custom endpoint (OpenAI compatible)`，API Base URL 填 `http://localhost:3000/api/ai/v1`。
-- **Claude Code**：在模型设置里把 Provider 切到 **OpenAI-compatible**，Base URL 填 `http://localhost:3000/api/ai/v1`，即可把它当模型用；它也能走 Anthropic 兼容地址（`ANTHROPIC_BASE_URL`）由网关转译。更原生的接法是下面的 MCP。
+- WorkBuddy（CodeBuddy）：`设置 → 模型 → 新建自定义模型`，类型选「OpenAI 兼容」；Base URL 填 `http://localhost:3000/api/ai/v1`，API Key 填任意非空，Model 随便写。它同时支持 MCP——`连接器 → 自定义连接器 → MCP`，URL 填 `http://localhost:8787/mcp`。
+- Hermes Agent：启动或设置里选 `Custom endpoint (OpenAI compatible)`，API Base URL 填 `http://localhost:3000/api/ai/v1`。
+- Claude Code：在模型设置里把 Provider 切到 OpenAI-compatible，Base URL 填 `http://localhost:3000/api/ai/v1`，即可把它当模型用；它也能走 Anthropic 兼容地址（`ANTHROPIC_BASE_URL`）由网关转译。更原生的接法是下面的 MCP。
 
 ### 13.4 接法 B：MCP（让客户端把 NEXUS 当工具调）
 
-NEXUS 自带一个 MCP 服务（`nexus-mcp`），能被 **Claude Desktop、Cursor、Cline、Cherry Studio、Continue、Zed、LibreChat** 等支持 MCP 的客户端直接连。
+NEXUS 自带一个 MCP 服务（`nexus-mcp`），能被 Claude Desktop、Cursor、Cline、Cherry Studio、Continue、Zed、LibreChat 等支持 MCP 的客户端直接连。
 
-它有**两种形态**，按需选：
+它有两种形态，按需选：
 
-**形态 1 · 本地 stdio（同一台机器）**
+形态 1 · 本地 stdio
 
 让客户端自己启动 `nexus-mcp` 进程。在客户端的 MCP 配置里加：
 
@@ -713,7 +705,7 @@ NEXUS 自带一个 MCP 服务（`nexus-mcp`），能被 **Claude Desktop、Curso
 }
 ```
 
-**形态 2 · 远程 HTTP（跨机器 / 云电脑）**
+形态 2 · 远程 HTTP
 
 先单独起 MCP 服务：
 
@@ -737,9 +729,9 @@ NEXUS 作为 MCP server 暴露的工具：`query_nexus_knowledge`（查本地知
 
 ### 13.5 鉴权与放行
 
-- 开了**中继模式**（`AI_BOT_TOKEN`）：用这个 token 当 Bearer；别人用需先 `nexusai register/login` 拿每日额度。
+- 开了中继模式（`AI_BOT_TOKEN`）：用这个 token 当 Bearer；别人用需先 `nexusai register/login` 拿每日额度。
 - 没开中继、纯自用：把后端放公网 + 设强 `JWT_SECRET`，或前面套一层自己的鉴权网关。
-- **CORS**：后端 `.env` 的 `CORS_ORIGIN`。默认 `*`（允许所有），生产环境建议改成前端 / 应用的域名。
+- CORS：后端 `.env` 的 `CORS_ORIGIN`。默认 `*`（允许所有），生产环境建议改成前端 / 应用的域名。
 
 ### 13.6 其它可用端点（给别的应用对接）
 
@@ -765,7 +757,7 @@ NEXUS 作为 MCP server 暴露的工具：`query_nexus_knowledge`（查本地知
 
 ### 14.1 拿 Webhook
 
-在飞书群里：**设置 → 群机器人 → 添加机器人**，复制它的 Webhook 地址，长这样：
+在飞书群里：设置 → 群机器人 → 添加机器人，复制它的 Webhook 地址，长这样：
 
 ```
 https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
@@ -777,14 +769,14 @@ https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
 
 ### 14.3 用起来
 
-- **WorkflowStudio（自动化页）**：提交任务后勾选「完成后回传飞书」，跑完自动推到群。
-- **测试**：设置页有「测试飞书回传」按钮，点一下群里收到测试消息就说明通了。
+- WorkflowStudio（自动化页）：提交任务后勾选「完成后回传飞书」，跑完自动推到群。
+- 测试：设置页有「测试飞书回传」按钮，点一下群里收到测试消息就说明通了。
 
 ---
 
 ## 15. 链式自动化（Workflow 自动化办公）
 
-「自动化」页（WorkflowStudio）功能：把一句话任务发给**自己部署的技术栈**（比如 Hermes + 本地模型 + 飞书回传的流水线），实时显示进度，跑完一键回传飞书。
+「自动化」页（WorkflowStudio）功能：把一句话任务发给自己部署的技术栈（比如 Hermes + 本地模型 + 飞书回传的流水线），实时显示进度，跑完回传飞书。
 
 ### 15.1 配置
 
@@ -801,7 +793,7 @@ NEXUS 前端会这样调自建服务（约定很简单）：
 - 自建服务返回进度 / 最终结果；
 - 前端拿到结果后，若勾选了飞书回传，就调飞书 Webhook 把结果推到群。
 
-这样就能把「读飞书群讨论 → 整理成日报 → 回传飞书」这种链式任务完全自动化，而且模型跑在自己机器上，数据不出内网。
+这样就能把「读飞书群讨论 → 整理成日报 → 回传飞书」这种链式任务自动化，而且模型跑在自己机器上，数据不出内网。
 
 ---
 
@@ -815,22 +807,22 @@ NEXUS 前端会这样调自建服务（约定很简单）：
 | MCP 服务（nexus-mcp） | 8787 | 独立 MCP 服务端 |
 | 企业微信回调 | 8788 | `WECOM_CALLBACK_PORT`，需公网可访问 |
 | 微信小程序 | 8789 | `WX_MP_PORT`，需公网可访问 |
-| OneBot（NapCat） | 3001 | `ws://127.0.0.1:3001`（默认） |
+| OneBot（NapCat） | 3001 | `ws://127.0.0.1:3001` |
 | ComfyUI（本地生图/视频） | 8188 | `http://localhost:8188`（可改 `COMFYUI_URL`） |
 | Ollama（本地模型） | 11434 | `http://本机IP:11434/v1` |
 | LM Studio（本地模型） | 1234 | `http://本机IP:1234/v1` |
 
-**核心地址回顾**：
+核心地址回顾：
 
 - 对话对外接口：`http://<地址>:3000/api/ai/v1/chat/completions`
-- 机器人连后端：`http://localhost:3000/api/ai/v1`（同机）
+- 机器人连后端：`http://localhost:3000/api/ai/v1`
 - 网页访问：`http://localhost:5173`
 
 ---
 
 ## 17. 云端互通（本地连云端数据库）
 
-想让本机部署和云端跑同一份数据，只需在本地 `backend/.env` 里把 `DATABASE_URL` 指向**云端数据库的外网连接串**（在云厂商控制台开启 PostgreSQL 公网访问后获取），并保持 `DB_MODE=local`。这样本地读写的数据，云端也能看到，反之亦然。
+想让本机部署和云端跑同一份数据，只需在本地 `backend/.env` 里把 `DATABASE_URL` 指向云端数据库的外网连接串（在云厂商控制台开启 PostgreSQL 公网访问后获取），并保持 `DB_MODE=local`。这样本地读写的数据，云端也能看到，反之亦然。
 
 ```
 DB_MODE=local
@@ -849,7 +841,7 @@ DATABASE_URL=postgresql://云端用户:云端密码@云端主机:5432/nexus
 nexusai update       # 自动拉最新代码 + 装依赖
 ```
 
-代码也会在每次启动时**后台静默对齐**最新版（每 6 小时最多一次，有本地改动时不动）。如果本机的 `nexusai` 根本没有 `update` 子命令，说明太旧了，整段复制粘贴下面四行重装一次即可（重装会保留数据 `nexus-data/` 和配置 `~/.nexusai/config.json`，Key 不用重填）：
+代码也会在每次启动时后台静默对齐最新版（每 6 小时最多一次，有本地改动时不动）。如果本机的 `nexusai` 根本没有 `update` 子命令，说明太旧了，整段复制粘贴下面四行重装一次即可（重装会保留数据 `nexus-data/` 和配置 `~/.nexusai/config.json`，Key 不用重填）：
 
 ```powershell
 cd $env:USERPROFILE\Desktop
@@ -860,13 +852,13 @@ node nexus-ai\installer\installer.mjs
 
 ### 18.2 常见问题
 
-- **证书报错 / 连示例域名**：说明 `AI_API_BASE` 填的是占位域名，跑 `nexusai setup` 重填。
-- **模型下架 / 英文报错**：CLI / 后端会自动切换当前可用免费模型，一般无需手改。
-- **机器人没声 / 连不上后端**：本质是后端没常驻，用 `nexusai up` 守护。
-- **本地模型连不上**：确认电脑开机、手机 / 前端和电脑在同一 WiFi，地址填对（含 `/v1`）。
-- **Agnes / 音乐某一块用不了**：对应 Key 没配，不影响对话和其它能力。
-- **Google 一键登录不可用**：本地部署请用网页里的「邮箱注册」登录，功能一样。
-- **`nexus` 也是可用命令**：装过全局命令后，短命令 `nexus` 等效 `nexusai chat`，直接进入对话。
+- 证书报错 / 连示例域名：说明 `AI_API_BASE` 填的是占位域名，跑 `nexusai setup` 重填。
+- 模型下架 / 英文报错：CLI / 后端会自动切换当前可用免费模型，一般无需手改。
+- 机器人没声 / 连不上后端：是后端没常驻，用 `nexusai up` 守护。
+- 本地模型连不上：确认电脑开机、手机 / 前端和电脑在同一 WiFi，地址填对（含 `/v1`）。
+- Agnes / 音乐某一块用不了：对应 Key 没配，不影响对话和其它能力。
+- Google 登录不可用：本地部署请用网页里的「邮箱注册」登录，功能一样。
+- `nexus` 也是可用命令：装过全局命令后，短命令 `nexus` 等效 `nexusai chat`，直接进入对话。
 
 ### 18.3 日志
 
@@ -878,26 +870,26 @@ node nexus-ai\installer\installer.mjs
 
 ## 19. 附：让别人免填 Key（站长中继模式）
 
-这一步不是必须的。只有当你希望下载你项目的人「零配置直接能用 AI」时才需要做，且需要你**自己有一台公网服务器**。没部署中继也完全能用——下载者各自 `nexusai setup` 填自己的 Key 即可。
+这一步不是必须的。只有当你希望下载你项目的人「零配置直接能用 AI」时才需要做，且需要你自己有一台公网服务器。没部署中继也能用——下载者各自 `nexusai setup` 填自己的 Key 即可。
 
-1. **站长（你）部署中继**：在一台公网服务器上跑本项目的后端，设置：
+1. 站长（你）部署中继：在一台公网服务器上跑本项目的后端，设置：
    ```
    AI_API_KEY=sk-or-你的真实key        # 真 key，只在你服务器，不下发、不进仓库
    AI_BOT_TOKEN=nexus-public-demo      # 开启公开中继模式的开关（同时作为站长自有网关的放行令牌）
    RELAY_DAILY_LIMIT=20                # 每个注册账号每天免费对话次数（可选，默认 20）
    RELAY_TRIAL_PER_IP=5                # 未登录访客每 IP 每天试用次数（可选，默认 5）
    ```
-2. **告诉下载者你的中继地址**：下载者 `nexusai setup` 选 2 填入即可；也可把 `backend/.env.example` 的 `AI_API_BASE` 默认值改成你的中继地址，让下载者免填。
-3. **下载者**：`npx github:2740354108/nexus-ai` 装完后：
+2. 告诉下载者你的中继地址：下载者 `nexusai setup` 选 2 填入即可；也可把 `backend/.env.example` 的 `AI_API_BASE` 默认值改成你的中继地址，让下载者免填。
+3. 下载者：`npx github:2740354108/nexus-ai` 装完后：
    ```
    nexusai setup                      # 选 2，填中继地址
    nexusai register 你的邮箱 密码     # 注册并领取每日免费额度
    nexusai login   你的邮箱 密码     # 已注册则直接登录
    nexusai chat                      # 开始对话（每天 20 次免费）
    ```
-   网页/桌面端也会自动弹出「免费试用 · 注册/登录」入口。所有下载者**全程看不到你的真 key**。
+   网页/桌面端也会自动弹出「免费试用 · 注册/登录」入口。所有下载者全程看不到你的真 key。
 
-安全说明：开启 `AI_BOT_TOKEN` 后即进入「公开中继模式」——未注册访客只有极少量 IP 试用额度，注册后按账号计每日额度，超限提示第二天再来；`AI_BOT_TOKEN` 可公开、可随时重置，真实 key 始终只在你的服务器，不会产生你的计费风险。想无限流或超额了，下载者也可 `nexusai setup` 填自己的 key。
+安全说明：开启 `AI_BOT_TOKEN` 后即进入「公开中继模式」——未注册访客只有少量 IP 试用额度，注册后按账号计每日额度，超限提示第二天再来；`AI_BOT_TOKEN` 可公开、可随时重置，真实 key 始终只在你的服务器，不会产生你的计费风险。想无限流或超额了，下载者也可 `nexusai setup` 填自己的 key。
 
 ---
 
@@ -910,11 +902,11 @@ node nexus-ai\installer\installer.mjs
 - 技能入口：`SKILL.md`
 - 接口速查：`skill/references/api.md`
 - 配置与排障：`skill/references/config.md`
-- 一键调用：`skill/scripts/nexus.sh`
+- 调用脚本：`skill/scripts/nexus.sh`
 
-> **导入请用独立技能仓库**：`https://github.com/2740354108/nexus-ai-skill`
+> 导入请用独立技能仓库：`https://github.com/2740354108/nexus-ai-skill`
 >
-> 部分「从 GitHub 导入技能」的实现限制**单仓库最多 100 个文件**，
+> 部分「从 GitHub 导入技能」的实现限制单仓库最多 100 个文件，
 > 而本仓库包含完整应用（280+ 文件）会被拒绝。
 > 上面这个仓库只含技能本体（5 个文件），专供导入使用，内容与本处一致。
 
