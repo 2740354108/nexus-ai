@@ -13,7 +13,7 @@ import { loadMcpServers, toOpenAiTools, callMcpToolByName } from './mcp-client.m
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const VERSION = '1.3.0'
+const VERSION = '1.3.1'
 // 仓库地址（后台自更新与 `update` 命令共用）
 const REPO_URL = 'https://github.com/2740354108/nexus-ai.git'
 // 新版代码标记：安装器用它判断本地是否真的更新成功（此字符串请勿删除）
@@ -337,8 +337,27 @@ function _dlen(s) {
   for (const ch of _stripAnsi(s)) n += ch.codePointAt(0) > 0x2e7f ? 2 : 1
   return n
 }
+// 从回复里取出纯文本：兼容字符串 / 多模态数组 / 完整消息对象三种结构。
+// 少了这一步，把消息对象直接丢给排版函数会抛 "text is not iterable"。
+function extractText(m) {
+  if (m == null) return ''
+  if (typeof m === 'string') return m
+  if (Array.isArray(m)) {
+    return m
+      .map((p) => (typeof p === 'string' ? p : p && typeof p.text === 'string' ? p.text : ''))
+      .join('')
+  }
+  if (typeof m === 'object') {
+    if (typeof m.content === 'string') return m.content
+    if (m.content != null) return extractText(m.content)
+    return ''
+  }
+  return String(m)
+}
+
 // 按显示宽度换行（CJK 按字断行，拉丁按空白断行）
 function _wrap(text, maxW) {
+  text = text == null ? '' : String(text)
   const out = []
   let cur = ''
   let w = 0
@@ -366,6 +385,7 @@ function _wrap(text, maxW) {
 }
 // 圆角边框盒子：左上角标题标签 + 正文，颜色可青/紫
 function _box(title, body, colorCode) {
+  body = extractText(body)
   if (!_TTY) return (title ? '『' + title + '』\n' : '') + body + '\n'
   const col = colorCode || C_CYAN
   const W = Math.max(40, (process.stdout.columns || 80) - 2)
@@ -720,8 +740,9 @@ async function chatMode() {
         : textOnly
       console.log(_box(' 你 ', uBody, C_VIOLET))
       const stop = _thinking()
-      const reply = await completeWithFallback(messages)
+      const replyMsg = await completeWithFallback(messages)
       stop()
+      const reply = extractText(replyMsg)
       messages.push({ role: 'assistant', content: reply })
       console.log(_box(' NEXUS AI ', reply, C_CYAN) + neon.green('  ✓ ') + neon.gray('模型: ' + (ACTIVE_MODEL || MODEL)))
     } catch (e) {
