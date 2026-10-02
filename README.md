@@ -603,10 +603,12 @@ nexusai            # 进对话，工具自动带上
 
 ## 13. 把我的模型 / AI 能力接进别的应用
 
-NEXUS 后端就是一个 OpenAI 兼容网关 + 一个 MCP 服务。而市面上现代 AI 客户端基本只认这两类协议——所以 NEXUS 几乎能塞进任何工具当「大脑」。
+NEXUS 后端就是一个 OpenAI 兼容网关 + 一个 MCP 服务。但能接什么、不能接什么要分清：
 
-- 接法 A · OpenAI 兼容（最通用，覆盖约 90% 工具）：在对方工具里把 Base URL 指向 NEXUS，任何认 OpenAI 格式的客户端都能直接用。
-- 接法 B · MCP（让 Claude Desktop / Cursor 等把 NEXUS 当「工具」调用）：对方支持 MCP 时，把 NEXUS 注册成一个 MCP server 即可。
+- 接法 A · OpenAI 兼容：适合纯聊天类客户端和自写代码（OpenAI SDK / LangChain 等）。把 Base URL 指向 NEXUS 即可，流式、非流式都行。
+- 接法 B · MCP：适合 Cursor、Cline、Claude Desktop 等 Agent 类工具。它们要的是「工具」而不是「模型端点」，走 MCP 才连得上。
+
+> 一个关键限制：NEXUS 的 OpenAI 兼容接口只做对话补全，不转发客户端的 `tools` / function call。所以靠工具调用驱动的 Agent 类工具（编码 Agent、编辑器的 Agent 面板）不能靠 Base URL 直连，请走 MCP；纯聊天类客户端不受影响。
 
 > 不管用哪种，先确认后端在跑：`nexusai up` 或 `nexusai serve`（端口 3000）。
 
@@ -651,42 +653,33 @@ c = OpenAI(base_url="http://localhost:3000/api/ai/v1", api_key="任意非空")
 print(c.chat.completions.create(model="nexus", messages=[{"role":"user","content":"你好"}]).choices[0].message.content)
 ```
 
-### 13.2 哪些工具走 OpenAI 兼容就能接
+### 13.2 哪些工具能接、哪些接不了
 
-下面是市面上主流、确认支持自定义 OpenAI 兼容 Base URL 的工具（不管字段叫 Base URL 还是 API Base，是一样的）。把这些工具的地址填成 `http://localhost:3000/api/ai/v1` 即可：
+先记一条：这个接口只做「对话补全」。所以能不能接，看对方是不是纯聊天——**能纯聊天的能接，靠 function calling（工具调用）干活的接不了。**
 
-| 工具 / 应用 | 类型 | 配置入口（大致位置） |
-|------------|------|---------------------|
-| **Cursor** | 编码助手 | Settings → Models → 自定义 Base URL |
-| **Cline**（VS Code 插件） | 编码助手 | 设置里 `cline.apiProvider` → OpenAI Compatible + Base URL |
-| **Continue** | 编码插件 | `config.json` 里 `apiBase` 字段 |
-| **Roo Code** | 编码插件 | 模型设置 → OpenAI Compatible |
-| **Aider** | 命令行编码 | 启动参数 `--openai-api-base` 或 `.aider.conf.yml` |
-| **Zed** | 编辑器 | Settings → AI → 自定义 Provider |
-| **Windsurf** | 编码助手 | 设置 → 模型 → 自定义端点 |
-| **Codex / 类 Codex 工具** | 编码 | 环境变量 `OPENAI_BASE_URL` |
-| **Claude Code** | 命令行 Agent | 切到 OpenAI-compatible Provider 模式，填 Base URL |
-| **ChatBox** | 聊天客户端 | 设置 → 添加自定义供应商 → OpenAI Compatible |
-| **Cherry Studio** | 聊天客户端 | 设置 → 模型服务 → 添加 OpenAI 兼容 |
-| **LobeChat** | 聊天客户端 | 设置 → 模型供应商 → 自定义（OpenAI） |
-| **LibreChat** | 聊天客户端 | `.env` 的 `OPENAI_API_BASE_URL` |
-| **Open WebUI** | 自托管聊天 | 管理员 → 连接 → OpenAI 兼容 |
-| **AnythingLLM** | 知识库聊天 | 设置 → LLM → Provider 选 OpenAI |
-| **SillyTavern** | 角色聊天 | 连接设置 → API 类型 OpenAI |
-| **Dify** | AI 工作流 | 模型供应商 → 自定义 OpenAI |
-| **n8n / Flowise** | 自动化 | 节点里 OpenAI 凭证 → Base URL |
-| **LangChain / 自写代码** | 开发框架 | `OpenAI(base_url=...)` |
-| **WorkBuddy（CodeBuddy）** | 桌面 / 多端 Agent | 设置 → 模型 → 新建自定义模型 → 选「OpenAI 兼容」 |
-| **Hermes Agent** | 开源 Agent | 启动 / 设置里选 `Custom endpoint (OpenAI compatible)` |
-| **LiteLLM / OpenRouter / AI快站 等网关** | 聚合网关 | 把 NEXUS 当成一个上游 Base URL 接入 |
+| 工具 / 应用 | 类型 | 能接吗 | 配置入口（大致位置） |
+|------------|------|--------|---------------------|
+| **ChatBox / Cherry Studio / LobeChat / LibreChat / Open WebUI** | 聊天客户端 | 可以 | 设置里添加 OpenAI 兼容供应商，填 Base URL |
+| **AnythingLLM / SillyTavern** | 知识库 / 角色聊天 | 可以 | Provider 选 OpenAI（兼容） |
+| **Dify / n8n / Flowise** | 工作流 / 自动化 | 可以（对话节点） | 模型供应商 / 节点里选自定义 OpenAI |
+| **LangChain / 自写代码 / OpenAI SDK** | 开发框架 | 可以（流式、非流式实测通过） | `OpenAI(base_url=...)` |
+| **LiteLLM / OpenRouter / AI快站 等网关** | 聚合网关 | 可以 | 把 NEXUS 当成一个上游 Base URL 接入 |
+| **Cursor** | 编码助手 | 仅 Chat 面板；Agent / Composer 不行 | Settings → Models → 自定义 Base URL |
+| **Continue** | 编码插件 | chat 可以，agent / edit 不行 | `config.json` 的 `apiBase` |
+| **Aider** | 命令行编码 | 看模式，主要靠 diff / tool calling，未必可用 | `--openai-api-base` |
+| **Cline / Roo Code** | VS Code 编码插件 | 不行，完全依赖工具调用 | 请走 MCP（接法 B） |
+| **Codex / 类 Codex** | 编码 | 不行，agentic 依赖工具调用 | 请走 MCP |
+| **Windsurf / Zed（agent 模式）** | 编辑器 | 不行，agent 面板依赖 tools | 请走 MCP |
+| **Claude Code** | 命令行 Agent | 不行，协议不对（Anthropic 原生），需转译层 | 请走 MCP |
+| **WorkBuddy（CodeBuddy）/ Hermes Agent** | 桌面 / 多端 Agent | 可配 OpenAI 兼容，纯聊天可用；Agent 能力看它是否依赖工具调用 | 见 13.3 |
 
-> 只要某个工具里有「Base URL / OpenAI 兼容 / 自定义模型」这些字眼，把地址填成 `http://localhost:3000/api/ai/v1` 就行。
+> 记法：**能纯聊天的能接；要「动手干活」（tool use / agent）的接不了——那类走 MCP。**
 
-### 13.3 重点三家怎么填
+### 13.3 几个常见客户端怎么填
 
-- WorkBuddy（CodeBuddy）：`设置 → 模型 → 新建自定义模型`，类型选「OpenAI 兼容」；Base URL 填 `http://localhost:3000/api/ai/v1`，API Key 填任意非空，Model 随便写。它同时支持 MCP——`连接器 → 自定义连接器 → MCP`，URL 填 `http://localhost:8787/mcp`。
-- Hermes Agent：启动或设置里选 `Custom endpoint (OpenAI compatible)`，API Base URL 填 `http://localhost:3000/api/ai/v1`。
-- Claude Code：在模型设置里把 Provider 切到 OpenAI-compatible，Base URL 填 `http://localhost:3000/api/ai/v1`，即可把它当模型用；它也能走 Anthropic 兼容地址（`ANTHROPIC_BASE_URL`）由网关转译。更原生的接法是下面的 MCP。
+- WorkBuddy（CodeBuddy）：`设置 → 模型 → 新建自定义模型`，类型选「OpenAI 兼容」；Base URL 填 `http://localhost:3000/api/ai/v1`，API Key 填任意非空，Model 随便写。纯聊天可用；它若用工具调用来干活，那部分需要一个支持 tools 的后端，NEXUS 的兼容接口不提供——那类场景建议走 MCP（`连接器 → 自定义连接器 → MCP`，URL 填 `http://localhost:8787/mcp`）。
+- Hermes Agent：启动或设置里选 `Custom endpoint (OpenAI compatible)`，API Base URL 填 `http://localhost:3000/api/ai/v1`。同理，纯对话可用，依赖工具调用的 Agent 能力不保证。
+- Claude Code：它是 Anthropic 原生协议，直接把 OpenAI 的 Base URL 填进去严格来说协议对不上，需要转译层才能当模型用；更稳的做法是走 MCP（接法 B）。
 
 ### 13.4 接法 B：MCP（让客户端把 NEXUS 当工具调）
 
