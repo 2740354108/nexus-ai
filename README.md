@@ -731,6 +731,35 @@ $env:TRANSPORT="http"; $env:PORT="8787"; $env:MCP_TOKEN="令牌"; node nexus-mcp
 
 NEXUS 作为 MCP server 暴露的工具：`query_nexus_knowledge`（查本地知识库）、`nexus_capabilities`（能力清单）、`nexus_chat`（用 NEXUS 配置的模型对话）。
 
+#### Claude Code 怎么接（推荐 stdio）
+
+stdio 模式下 Claude Code 自己拉起 `nexus-mcp` 进程，最省事。先把 MCP 服务构建好，再在 Claude Code 里注册：
+
+```bash
+# 1. 构建（在 NEXUS 项目根目录）
+pnpm -C nexus-mcp install && pnpm -C nexus-mcp build
+
+# 2. 在 Claude Code 里注册（同一台机器）
+claude mcp add nexus \
+  -e TRANSPORT=stdio \
+  -e NEXUS_CHAT_BASE_URL=http://localhost:3000/api/ai/v1 \
+  -e NEXUS_CHAT_API_KEY=你的AI_BOT_TOKEN \
+  -- node /绝对路径/nexus-ai/nexus-mcp/dist/index.js
+```
+
+> Windows PowerShell：路径用反斜杠，例如 `C:\path\to\nexus-ai\nexus-mcp\dist\index.js`；`NEXUS_CHAT_API_KEY` 填后端 `.env` 里的 `AI_BOT_TOKEN` 即可免登录调用（只本机自用）。
+> 注册后 `claude mcp list` 能看到 `nexus`，对话里就能让它调用 NEXUS 的工具了。
+
+#### Claude Code 走远程 HTTP（可选）
+
+先把服务起成 HTTP（见「形态 2」），再注册：
+
+```bash
+claude mcp add nexus --transport http http://localhost:8787/mcp
+# 若设了 MCP_TOKEN：
+claude mcp add nexus --transport http http://localhost:8787/mcp -H "Authorization: Bearer 你的令牌"
+```
+
 ### 13.5 鉴权与放行
 
 - 开了中继模式（`AI_BOT_TOKEN`）：用这个 token 当 Bearer；别人用需先 `nexusai register/login` 拿每日额度。

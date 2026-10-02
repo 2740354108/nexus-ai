@@ -12,12 +12,16 @@ import { loadKnowledge, queryKnowledge, type KnowledgeDoc } from "./knowledge.js
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const KNOWLEDGE_DIR = join(__dirname, "..", "knowledge");
 
-const CAPABILITIES = `NEXUS AI 是一个独立 AI 应用，当前支持的能力：
-1. 智能对话（可接 OpenRouter 或本地模型，支持工具调用与调用另一个模型）
-2. 生图 / 生视频（可直连用户自己的 ComfyUI）
-3. 写代码并网页在线预览
-4. 自动化办公（接用户自建 HTTP 技术栈 + 飞书回传）
-5. 自带密钥 / 本地部署，数据可不出门`;
+const CAPABILITIES = `NEXUS AI 是由 NEXUS LAB 打造的私有化多模态 AI 助手，可在用户自己的电脑 / 服务器上运行，主打数据可不出门、可本地部署。
+
+品牌调性：务实、可信、以用户为中心；回答直接切题，不堆砌术语，遇到不确定的事诚实说明、不编造。
+
+当前通过本 MCP 服务暴露的基础能力：
+1. nexus_chat：用 NEXUS 配置的模型进行一次对话（模型 / 密钥来自本服务的环境变量；后端会套用 NEXUS LAB 人设，无需在请求里再带 system 提示）。
+2. query_nexus_knowledge：检索本地知识库里的 NEXUS LAB 业务资料、公司介绍与文档。
+3. nexus_capabilities：返回本清单。
+
+NEXUS 更完整的能力（在 NEXUS 主应用里，不在本 MCP 服务内）：生图 / 生视频、写代码并网页在线预览、自动化办公（Workflow + 飞书回传）、微信 / QQ / Telegram 机器人、本地模型接入（Ollama / LM Studio / vLLM）。`;
 
 // 启动时一次性载入知识库（你往 knowledge/ 丢文件，重启服务即可生效）
 let docs: KnowledgeDoc[] = [];
