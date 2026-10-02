@@ -13,7 +13,7 @@ import { loadMcpServers, toOpenAiTools, callMcpToolByName } from './mcp-client.m
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const VERSION = '1.3.2'
+const VERSION = '1.3.3'
 // 仓库地址（后台自更新与 `update` 命令共用）
 const REPO_URL = 'https://github.com/2740354108/nexus-ai.git'
 // 新版代码标记：安装器用它判断本地是否真的更新成功（此字符串请勿删除）
@@ -445,6 +445,66 @@ function _thinking() {
   }
 }
 
+/* ===== 品牌标识：对话顶部的大号 NEXUS 字样 =====
+   参照 Hermes / DeepSeek 那种终端标识，给进入对话时来一块有冲击力的品牌头。
+   按终端能力自动降级，绝不牺牲可用性：
+   - 真彩色终端 → 逐字符「青→紫」渐变
+   - 16 / 256 色终端 → 青紫交替
+   - 无色终端 → 纯文本图案
+   - 非交互（管道 / 重定向）→ 不输出大图，退回简洁标题
+   - 终端太窄 → 退回单行品牌 */
+const NEXUS_ART = [
+  '███╗   ██╗ ███████╗ ██╗  ██╗ ██╗   ██╗ ███████╗',
+  '████╗  ██║ ██╔════╝ ╚██╗██╔╝ ██║   ██║ ██╔════╝',
+  '██╔██╗ ██║ █████╗    ╚███╔╝  ██║   ██║ ███████╗',
+  '██║╚██╗██║ ██╔══╝    ██╔██╗  ██║   ██║ ╚════██║',
+  '██║ ╚████║ ███████╗ ██╔╝ ██╗ ╚██████╔╝ ███████║',
+  '╚═╝  ╚═══╝ ╚══════╝ ╚═╝  ╚═╝  ╚═════╝  ╚══════╝',
+]
+const _NEXUS_ART_W = 47 // 图案显示宽度
+
+// 在「#67e8f9 亮青」与「#c4b5fd 亮紫」之间取色，t 为 0~1
+function _gradientColor(t) {
+  const a = [103, 232, 249]
+  const b = [196, 181, 253]
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t))
+  return `38;2;${c[0]};${c[1]};${c[2]}`
+}
+
+// 渲染大号 NEXUS 图案；非 TTY 返回 ''（由调用方退回简洁标题）
+function nexusBanner() {
+  if (!_TTY) return ''
+  const cols = process.stdout.columns || 80
+  if (cols < _NEXUS_ART_W + 2) {
+    return '  ' + neon.cyan('NEXUS') + neon.violet(' AI') + '  ' + neon.gray('v' + VERSION) + '\n'
+  }
+  const rows = NEXUS_ART.map((line) => {
+    if (!_COLOR) return line
+    const chars = [...line]
+    if (_TC) {
+      const n = Math.max(1, chars.length - 1)
+      return chars.map((ch, i) => _e(_gradientColor(i / n)) + ch).join('') + RESET
+    }
+    // 16 / 256 色：青紫交替
+    return chars.map((ch, i) => paint(ch, i % 2 ? C_VIOLET : C_CYAN)).join('')
+  })
+  return rows.join('\n') + '\n'
+}
+
+// 对话顶部品牌头：大图 + 副标题；窄屏 / 非交互时退回原来的方框标题
+function nexusHeader() {
+  const sub =
+    '  ' +
+    neon.cyan('本地多模态助手') +
+    neon.gray(' · 终端版 v' + VERSION) +
+    '\n' +
+    '  ' +
+    neon.gray('青紫霓虹 · 零依赖 · 多模型自动切换')
+  const art = nexusBanner()
+  if (art) return art + sub + '\n'
+  return _box(' NEXUS AI ', '本地多模态助手 · 终端版 v' + VERSION + '\n' + neon.gray('青紫霓虹 · 零依赖 · 多模型自动切换'), C_VIOLET)
+}
+
 const SYSTEM_PROMPT =
   '你是 NEXUS AI，一个本地运行的多模态助手，擅长回答各类问题、写代码、分析图片。回答简洁友好，中文为主。'
 
@@ -716,11 +776,7 @@ async function chatMode() {
 
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }]
   console.log(
-    _box(
-      ' NEXUS AI ',
-      '本地多模态助手 · 终端版 v' + VERSION + '\n' + neon.gray('青紫霓虹 · 零依赖 · 多模型自动切换'),
-      C_VIOLET
-    ) +
+    nexusHeader() +
       neon.gray('  命令：') +
       neon.cyan('/exit') +
       neon.gray(' 退出   ') +

@@ -3,6 +3,6 @@
   "sub_project_type": "",
   "name": "NEXUS AI",
   "app_slug": "nexus-ai",
-  "version_description": "Correct README integration claims",
+  "version_description": "Add colorful NEXUS banner to terminal CLI",
   "preview_type": "mobile"
 }
