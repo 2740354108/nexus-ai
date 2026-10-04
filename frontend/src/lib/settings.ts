@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { resolveApiBase, setApiBaseUrl } from "./apiBase";
 
 /**
  * 应用设置（自带密钥模式）
  * 原生环境用 Capacitor Preferences 存到系统存储，网页环境回落到 localStorage。
  */
 export type AppSettings = {
+  /**
+   * 后端服务器地址（登录 / 云端对话等接口所在的服务）。
+   * 一般留空即用内置地址；仅当换了部署地址、或想连自建服务器时才填写。
+   */
+  serverBase: string;
   /**
    * 对话接口地址（OpenAI 兼容）。
    * 默认走 OpenRouter；改成自己的服务即可接本地/自建模型，例如：
@@ -55,6 +61,7 @@ const STORAGE_KEY = "nexus.app.settings";
 export const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  serverBase: "",
   chatApiBase: OPENROUTER_BASE,
   openrouterKey: "",
   chatModel: "z-ai/glm-5.2",
@@ -109,6 +116,8 @@ export async function saveSettings(next: AppSettings): Promise<void> {
   } else {
     localStorage.setItem(STORAGE_KEY, raw);
   }
+  // 服务器地址变化时，立即让接口指向新地址
+  setApiBaseUrl(resolveApiBase(next.serverBase));
 }
 
 export async function clearSettings(): Promise<void> {
@@ -117,6 +126,7 @@ export async function clearSettings(): Promise<void> {
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+  setApiBaseUrl(resolveApiBase(""));
 }
 
 /** 在组件里读写设置，自动加载 + 自动持久化 */

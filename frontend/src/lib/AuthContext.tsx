@@ -67,9 +67,15 @@ async function api(path: string, options?: RequestInit) {
       ...options?.headers,
     },
   })
-  const data = await res.json().catch(() => ({}))
+  const text = await res.text().catch(() => '')
+  let data: any = {}
+  try {
+    data = text ? JSON.parse(text) : {}
+  } catch {
+    data = {}
+  }
   if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`)
+    throw new Error(data?.error || `请求失败（${res.status}）`)
   }
   return data
 }
@@ -132,15 +138,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const persist = (data: any) => {
+    const u = data?.user
+    if (!u || !u.uid) {
+      throw new Error('登录失败：服务器返回的数据异常，请检查网络或服务器地址后重试')
+    }
+    if (!data?.token) {
+      throw new Error('登录失败：未获取到登录凭证，请稍后重试')
+    }
     const profile: UserProfile = {
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name || '',
-      avatar_url: data.user.avatar_url || '',
-      provider: data.user.provider || (data.user.phoneVerified ? 'phone' : 'email'),
-      emailVerified: !!data.user.emailVerified,
-      phone: data.user.phone || '',
-      phoneVerified: !!data.user.phoneVerified,
+      uid: u.uid,
+      email: u.email,
+      name: u.name || '',
+      avatar_url: u.avatar_url || '',
+      provider: u.provider || (u.phoneVerified ? 'phone' : 'email'),
+      emailVerified: !!u.emailVerified,
+      phone: u.phone || '',
+      phoneVerified: !!u.phoneVerified,
     }
     setToken(data.token)
     setUser(profile)

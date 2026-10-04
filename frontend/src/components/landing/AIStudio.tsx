@@ -257,19 +257,32 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 原生应用：是否已填入自己的密钥；网页端：询问后端是否配置
-    if (isNativeApp()) {
-      loadSettings().then((s) => {
+    let alive = true;
+    (async () => {
+      // 原生应用：先看是否填了自己的密钥；没有则回落到本站云端中继
+      if (isNativeApp()) {
+        const s = await loadSettings();
+        if (!alive) return;
         setAppSettings(s);
-        // 走云端需要密钥；接自己的本地/自建服务时不需要密钥，填了地址即可
-        setConfigured(isOpenRouter(s.chatApiBase) ? !!s.openrouterKey : !!s.chatApiBase);
-      });
-      return;
-    }
-    fetch("/api/ai/status")
-      .then((r) => r.json())
-      .then((d) => setConfigured(!!d.configured))
-      .catch(() => setConfigured(false));
+        // 接自己的本地/自建服务时不需要密钥，填了地址即可
+        const ownKeyReady = isOpenRouter(s.chatApiBase) ? !!s.openrouterKey : !!s.chatApiBase;
+        if (ownKeyReady) {
+          setConfigured(true);
+          return;
+        }
+      }
+      // 网页端 / 无自有密钥的原生端：询问后端是否已完成云端配置
+      try {
+        const r = await fetch("/api/ai/status");
+        const d = await r.json();
+        if (alive) setConfigured(!!d.configured);
+      } catch {
+        if (alive) setConfigured(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -291,33 +304,37 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     const onError = handlers.onError;
 
     return (async () => {
-      // 原生应用：用用户自己的密钥，直连云端或用户自己部署的服务，不经过任何中间服务器
+      // 原生应用：填了自己的密钥/服务地址时直连；否则回落到本站云端中继（与网页端一致）
       if (isNativeApp()) {
         const s = appSettings ?? (await loadSettings());
-    // 若预设备用模型，注入系统提示让主模型自动转接
-    const hint = buildRouterHint({ endpoint: s.routerEndpoint, model: s.routerModel });
-    let extraSystem: string | undefined = hint || undefined;
-    if (web) {
-      const ctx = await fetchWebContext(lastUserText(msgs));
-      if (ctx) extraSystem = extraSystem ? extraSystem + "\n" + ctx : ctx;
-    }
-    await streamChatCompletion({
-      baseUrl: s.chatApiBase,
-      apiKey: s.openrouterKey,
-      model: think ? s.chatModelThink || "deepseek/deepseek-r1:free" : s.chatModel,
-      mode,
-      messages: msgs,
-      system: extraSystem,
-      tools: [MODEL_ROUTER_TOOL],
-          executeTool: (call) =>
-            executeModelRouterTool(call, {
-              endpoint: s.routerEndpoint,
-              model: s.routerModel,
-              apiKey: s.routerApiKey,
-            }),
-          handlers: { onToken, onModel, onError, onToolCall: (name) => setToolBusy(name) },
-        });
-        return;
+        const hasOwnKey = isOpenRouter(s.chatApiBase) ? !!s.openrouterKey : !!s.chatApiBase;
+        if (hasOwnKey) {
+          // 若预设备用模型，注入系统提示让主模型自动转接
+          const hint = buildRouterHint({ endpoint: s.routerEndpoint, model: s.routerModel });
+          let extraSystem: string | undefined = hint || undefined;
+          if (web) {
+            const ctx = await fetchWebContext(lastUserText(msgs));
+            if (ctx) extraSystem = extraSystem ? extraSystem + "\n" + ctx : ctx;
+          }
+          await streamChatCompletion({
+            baseUrl: s.chatApiBase,
+            apiKey: s.openrouterKey,
+            model: think ? s.chatModelThink || "deepseek/deepseek-r1:free" : s.chatModel,
+            mode,
+            messages: msgs,
+            system: extraSystem,
+            tools: [MODEL_ROUTER_TOOL],
+            executeTool: (call) =>
+              executeModelRouterTool(call, {
+                endpoint: s.routerEndpoint,
+                model: s.routerModel,
+                apiKey: s.routerApiKey,
+              }),
+            handlers: { onToken, onModel, onError, onToolCall: (name) => setToolBusy(name) },
+          });
+          return;
+        }
+        // 没有自有密钥：继续走下方云端中继
       }
 
       let resp: globalThis.Response;
@@ -453,10 +470,6 @@ const AIStudio = ({ embedded = false, defaultMode = "chat" }: { embedded?: boole
     } finally {
       setImageBusy(false);
     }
-  };
-
-  const handleClearHistory = async () => {
-    await remove(activeId || "");
   };
 
   const generateCode = async () => {

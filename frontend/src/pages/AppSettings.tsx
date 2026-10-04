@@ -37,6 +37,7 @@ import {
 import { runWorkflow, pushToFeishu } from "@/lib/providers/workflowClient";
 import { useAuth } from "@/lib/AuthContext";
 import { getCloudConfig, saveCloudConfig } from "@/lib/billing";
+import { getDefaultApiBase } from "@/lib/apiBase";
 
 /** 从用户自己的 ComfyUI 上拉到的模型清单 */
 const ModelSelect = ({
@@ -411,6 +412,27 @@ const AppSettings = () => {
             </p>
           )}
         </section>
+
+        {/* 服务器地址：应用端登录 / 云端对话所在的服务（一般不用改） */}
+        {cloud && (isNativeApp() || !!draft.serverBase) && (
+          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+            <label className="text-xs font-medium text-white">服务器地址（登录 / 云端对话）</label>
+            <input
+              type="url"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={draft.serverBase}
+              onChange={(e) => setDraft((d) => ({ ...d, serverBase: e.target.value }))}
+              placeholder={getDefaultApiBase() || "留空即用内置地址"}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white placeholder:text-white/30 focus:border-cyan-400/50 focus:outline-none"
+            />
+            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+              一般不用改，留空即用内置地址。仅当换了部署地址、或想连自己的服务器时才填写（改完点保存）。
+            </p>
+          </section>
+        )}
 
         {/* 对话模型：云端模式在基础区直接选，本地模式提示去高级设置 */}
         {cloud ? (
