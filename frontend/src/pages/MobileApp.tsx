@@ -15,6 +15,7 @@ import {
   Crown,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import { useLoginModal } from "@/components/LoginModalProvider";
 import { isOpenRouter, useSettings } from "@/lib/settings";
 import AIStudio from "@/components/landing/AIStudio";
 import MusicStudio from "@/components/landing/MusicStudio";
@@ -48,6 +49,7 @@ const NAV: { key: MainTab; label: string; icon: typeof MessageSquare }[] = [
  */
 const MobileApp = () => {
   const { user, signOut } = useAuth();
+  const { openLogin } = useLoginModal();
   const { settings } = useSettings();
   const [tab, setTab] = useState<MainTab>("chat");
   const [createTab, setCreateTab] = useState<CreateTab>("image");
@@ -65,13 +67,20 @@ const MobileApp = () => {
             NEXUS<span className="text-gradient-neon ml-1">LAB</span>
           </span>
         </div>
-        {user && (
+        {user ? (
           <button
             onClick={signOut}
             className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
           >
             <LogOut className="h-3.5 w-3.5" />
             退出
+          </button>
+        ) : (
+          <button
+            onClick={openLogin}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10"
+          >
+            登录
           </button>
         )}
       </header>
@@ -161,6 +170,15 @@ const MobileApp = () => {
               <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   应用为离线独立模式，AI 功能使用你自己的密钥或自己部署的服务，无需登录即可使用。
+                </p>
+                <button
+                  onClick={openLogin}
+                  className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  登录 / 注册
+                </button>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+                  登录后可在云端保存配置、跨设备同步。
                 </p>
               </div>
             )}

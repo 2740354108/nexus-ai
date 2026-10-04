@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   Feather,
+  ArrowLeft,
 } from "lucide-react";
 import {
   CHAT_MODELS,
@@ -100,6 +102,7 @@ const PRESETS: { key: string; label: string; base: string; model: string; tip: s
 const AppSettings = () => {
   const { settings, update, reset, ready } = useSettings();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [draft, setDraft] = useState(settings);
   const [showKey, setShowKey] = useState(false);
   const [showToken, setShowToken] = useState(false);
@@ -303,8 +306,17 @@ const AppSettings = () => {
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-[#0a0a12] text-foreground">
       {/* 顶部 */}
       <header className="shrink-0 px-4 pb-3 pt-5">
-        <h1 className="text-lg font-bold tracking-tight text-white">设置</h1>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/app")}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="返回"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <h1 className="text-lg font-bold tracking-tight text-white">设置</h1>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
           开箱即用：登录即可直接使用云端 AI。如需接入自己的模型、技术栈或画图引擎，展开下方「高级设置」。
         </p>
       </header>
