@@ -108,11 +108,15 @@ class StdioMcp {
 // ---------------- http ----------------
 class HttpMcp {
   constructor(private cfg: McpCfg) {}
-  private base() {
-    return (this.cfg.url || '').replace(/\/+$/, '')
+  private endpoint() {
+    const u = (this.cfg.url || '').trim()
+    // 配置里已是完整 /mcp 端点（可能带查询参数，如 aihot 的 ?aihot_actor=）时直接用，
+    // 避免在其后硬拼 /mcp 把查询串破坏。
+    if (/mcp(\?|$)/.test(u)) return u
+    return u.replace(/\/+$/, '') + '/mcp'
   }
   private post(bodyObj: any): Promise<any> {
-    const url = new URL(this.base() + '/mcp')
+    const url = new URL(this.endpoint())
     const lib = url.protocol === 'https:' ? https : http
     return new Promise((resolve, reject) => {
       const req = lib.request(
@@ -177,6 +181,13 @@ function writeDefaultConfig() {
         'NEXUS AI 多 MCP 配置（前后端共享）。列出要连接的多个 MCP server，可独立 enabled 开/关。' +
         'transport=stdio 本地启动子进程；transport=http 连远程网址。工具名自动加 server 前缀。',
       servers: [
+        {
+          name: 'aihot',
+          enabled: true,
+          transport: 'http',
+          url: 'https://aihot.news/api/mcp?aihot_actor=d6a258aa-8e76-4388-97dd-4612332cab6f',
+          headers: {},
+        },
         { name: 'filesystem', enabled: false, transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'], env: {} },
         { name: 'example-http', enabled: false, transport: 'http', url: 'https://your-mcp.example.com/mcp', headers: { Authorization: 'Bearer YOUR_TOKEN' } },
       ],

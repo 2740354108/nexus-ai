@@ -495,7 +495,8 @@ async function streamUpstream(
   maxTokens: number,
   onToken: (token: string) => void,
   signal: AbortSignal,
-): Promise<void> {
+  tools?: any[],
+): Promise<{ content: string; tool_calls?: any[] }> {
   const upstream = await fetch(`${env.AI_API_BASE.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -510,6 +511,7 @@ async function streamUpstream(
       temperature,
       max_tokens: maxTokens,
       stream: true,
+      ...(tools && tools.length ? { tools, tool_choice: 'auto' } : {}),
     }),
     signal,
   })
@@ -529,6 +531,8 @@ async function streamUpstream(
   const reader = upstream.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let fullContent = ''
+  const toolAcc = new Map<number, { id?: string; name?: string; args: string }>()
 
   while (true) {
     const { done, value } = await reader.read()
@@ -541,16 +545,40 @@ async function streamUpstream(
       buffer = buffer.slice(nl + 1)
       if (!line.startsWith('data:')) continue
       const payload = line.slice(5).trim()
-      if (payload === '[DONE]') return
+      if (payload === '[DONE]') break
       try {
         const json: any = JSON.parse(payload)
-        const token: string | undefined = json?.choices?.[0]?.delta?.content
-        if (token) onToken(token)
+        const delta = json?.choices?.[0]?.delta
+        const token: string | undefined = delta?.content
+        if (token) {
+          fullContent += token
+          onToken(token)
+        }
+        // 累积工具调用（流式分片）
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0
+            if (!toolAcc.has(idx)) toolAcc.set(idx, { id: undefined, name: undefined, args: '' })
+            const a = toolAcc.get(idx)!
+            if (tc.id) a.id = tc.id
+            if (tc.function?.name) a.name = (a.name || '') + tc.function.name
+            if (tc.function?.arguments) a.args += tc.function.arguments
+          }
+        }
       } catch {
         // 忽略不完整的分片
       }
     }
   }
+
+  const tool_calls = toolAcc.size
+    ? Array.from(toolAcc.values()).map((a) => ({
+        id: a.id,
+        type: 'function',
+        function: { name: a.name || '', arguments: a.args },
+      }))
+    : undefined
+  return { content: fullContent, tool_calls }
 }
 
 /**
@@ -699,6 +727,8 @@ aiRouter.post('/chat/stream', async (req: Request, res: Response) => {
   const maxTokens = mode === 'code' ? 4096 : 2048
 
   const chain = await (mode === 'think' ? getThinkModelChain() : getModelChain())
+  const mcp = await getMcp()
+  const tools = mcp.tools
   const failures: AttemptFail[] = []
   let started = false
 
@@ -715,23 +745,49 @@ aiRouter.post('/chat/stream', async (req: Request, res: Response) => {
 
   for (const model of chain) {
     try {
-      await streamUpstream(
-        model,
-        systemPrompt,
-        userMessages,
-        temperature,
-        maxTokens,
-        (token) => {
+      // 带 MCP 工具的流式循环：模型可多次调用工具，直到不再调用为止
+      const full: any[] = [{ role: 'system', content: systemPrompt }, ...userMessages]
+      for (let turn = 0; turn < 8; turn++) {
+        const msg = await streamUpstream(
+          model,
+          systemPrompt,
+          full.slice(1),
+          temperature,
+          maxTokens,
+          (token) => {
+            if (!started) {
+              started = true
+              send('model', { model })
+            }
+            send('token', { token })
+          },
+          ac.signal,
+          tools,
+        )
+        if (res.writableEnded) return
+        const calls = msg.tool_calls
+        if (!calls || !calls.length) {
+          send('done', {})
+          if (uid && !isRelayMode()) void recordUsage(uid, 'chat', 1)
+          finish()
+          return
+        }
+        full.push({ role: 'assistant', content: msg.content || '', tool_calls: calls })
+        for (const c of calls) {
+          let result: string
+          try {
+            result = await callMcpToolByName(mcp.servers, c.function.name, c.function.arguments || {})
+          } catch (e: any) {
+            result = '工具调用失败: ' + (e?.message || e)
+          }
           if (!started) {
             started = true
             send('model', { model })
           }
-          send('token', { token })
-        },
-        ac.signal,
-      )
+          full.push({ role: 'tool', tool_call_id: c.id, content: result })
+        }
+      }
       send('done', {})
-      if (uid && !isRelayMode()) void recordUsage(uid, 'chat', 1)
       finish()
       return
     } catch (err: any) {
